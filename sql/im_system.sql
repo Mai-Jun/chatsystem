@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS `user` (
   `phone`          VARCHAR(20)  NOT NULL COMMENT '手机号即登录账号',
   `password_hash`  VARCHAR(128) NOT NULL DEFAULT '' COMMENT '密码哈希',
   `avatar_file_id` VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '头像文件id',
-  `create_time`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `update_time`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `create_time`    BIGINT      NOT NULL DEFAULT 0,
+  `update_time`    BIGINT      NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_phone` (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS `friend_apply` (
   `peer_id`     VARCHAR(64)  NOT NULL COMMENT '被申请人',
   `status`      TINYINT      NOT NULL DEFAULT 0 COMMENT '0待处理 1同意 2拒绝',
   `apply_note`  VARCHAR(256) NOT NULL DEFAULT '' COMMENT '验证消息',
-  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `create_time` BIGINT      NOT NULL DEFAULT 0,
+  `update_time` BIGINT      NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_peer_status` (`peer_id`, `status`),
   KEY `idx_user` (`user_id`)
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `friend_relation` (
   `id`          VARCHAR(64) NOT NULL COMMENT 'uuid',
   `user_id`     VARCHAR(64) NOT NULL,
   `peer_id`     VARCHAR(64) NOT NULL,
-  `create_time` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `create_time` BIGINT     NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_user_peer` (`user_id`, `peer_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='好友关系表';
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS `chat_session` (
   `name`        VARCHAR(64) NOT NULL DEFAULT '' COMMENT '群名（单聊为空）',
   `type`        TINYINT     NOT NULL DEFAULT 0 COMMENT '0单聊 1群聊',
   `creator_id`  VARCHAR(64) NOT NULL DEFAULT '' COMMENT '群主（单聊为空）',
-  `create_time` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `create_time` BIGINT     NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会话表';
 
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS `chat_session_member` (
   `id`          VARCHAR(64) NOT NULL COMMENT 'uuid',
   `session_id`  VARCHAR(64) NOT NULL,
   `user_id`     VARCHAR(64) NOT NULL,
-  `create_time` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `create_time` BIGINT     NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_session_user` (`session_id`, `user_id`),
   KEY `idx_user` (`user_id`)
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS `message` (
   `file_name`   VARCHAR(128) NOT NULL DEFAULT '',
   `file_size`   BIGINT       NOT NULL DEFAULT 0,
   `asr_text`    TEXT         NULL COMMENT '语音转写文本',
-  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `create_time` BIGINT      NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_session_time` (`session_id`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息表';
@@ -85,6 +85,6 @@ CREATE TABLE IF NOT EXISTS `file` (
   `file_name`   VARCHAR(128) NOT NULL,
   `file_size`   BIGINT       NOT NULL DEFAULT 0,
   `file_path`   VARCHAR(256) NOT NULL COMMENT '相对存储目录路径',
-  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `create_time` BIGINT      NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件元数据表';
