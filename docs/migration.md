@@ -25,6 +25,20 @@
 5. 编译冒烟测试：`cmake -S . -B build && cmake --build build && ctest --test-dir build`
 6. 对照 `docs/env.md` 回填新机版本号，确认与旧机一致（brpc 1.9.0 / protobuf 3.12 为锁定组合，不得漂移）
 
+## 本机下载物清理台账（防止遗忘）
+
+> 背景：M0 阶段这台机器 WSL 因系统组件损伤不可用，改用 VirtualBox 虚拟机方案（im-dev，8核8G/60G）。
+
+| 文件 | 状态 | 说明 |
+|---|---|---|
+| `C:\WSL\jammy-wsl.rootfs.tar.gz` | ✅ 已删除（2026-10-06） | WSL 专用 rootfs，VirtualBox 方案用不上；新机将重新下载 |
+| `C:\WSL\ubuntu-22.04.5-live-server-amd64.iso` | 保留（2GB） | 虚拟机救援/重装用；项目收口确认稳定后可删 |
+| `C:\WSL\VirtualBox-7.2.20-175154-Win.exe` | 可删 | 安装包，已装完 |
+| `C:\WSL\PortableGit.7z.exe` | 可删 | 已解压到 `C:\PortableGit`（Windows 侧 git 继续用） |
+| `C:\PortableGit\` | 项目结束时可删 | Windows 侧便携 git |
+| `C:\WSL\im-dev\` + `C:\Users\Mai\VirtualBox VMs\im-dev\` | 保留 | 虚拟机磁盘与配置；换新机时整目录可迁移或重建 |
+| Windows 已启用的功能（虚拟机平台/容器/hypervisor=auto） | 保留无害 | 新机无需复制；这台机器日后想用 WSL 需先修复系统组件 |
+
 ## 注意事项
 
 - 密钥类（百度 ASR、阿里云短信、数据库密码）：只存在于 conf/*.local.flags 与个人配置中，**不入 git**，换机时手动带走/重建；
