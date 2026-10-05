@@ -39,6 +39,43 @@
 | `C:\WSL\im-dev\` + `C:\Users\Mai\VirtualBox VMs\im-dev\` | 保留 | 虚拟机磁盘与配置；换新机时整目录可迁移或重建 |
 | Windows 已启用的功能（虚拟机平台/容器/hypervisor=auto） | 保留无害 | 新机无需复制；这台机器日后想用 WSL 需先修复系统组件 |
 
+## 服务器（47.112.192.119）清理与变更台账（2026-10-06，开发期持续维护）
+
+**原则：服务器上所有项目期安装的东西都在这张表里；项目结束/迁回本地后按表清理。虚拟机类环境删除即消失。**
+
+### 已执行的清理
+
+| 动作 | 对象 | 说明 |
+|---|---|---|
+| ✅ 已删除 | `/home/mai/messagequeue-ubuntu20.44`（1.7G） | 旧项目环境目录 |
+| ✅ 已停止 | mai 的 vscode-server 进程 | 重连 VSCode 会自动再起 |
+| ✅ 已停止+禁用 | fwupd 服务 | 固件更新，服务器无用 |
+| ✅ 已停止（长期如此） | mysql（native，disabled）、OJ 相关服务 | **/var/lib/mysql 数据原样保留** |
+| 保留未删 | `/home/mai/messagequeue`（77M）、`cpp-OJ-vibe_coding`（14M）、`oj-data`（233M） | 旧代码/数据，确认不要可 `rm -rf` |
+
+### 项目期新增（结束时清理）
+
+| 对象 | 说明 |
+|---|---|
+| `/root/chatsystem/` | 本项目仓库（结束时可删或归档） |
+| `/root/im-system.bundle`、`/root/deps_install.log`、`/root/docker_install.log` | 传输与安装日志（可删） |
+| apt 包：build-essential/cmake/libprotobuf-dev/libodb-*/libgtest-dev/libspdlog-dev/libgflags-dev/libwebsocketpp-dev/librabbitmq-dev/libhiredis-dev 等 | `apt autoremove` 级清理 |
+| `/usr/local`：libbrpc.a、redis-plus-plus、（原有 protobuf 3.20.2 保留——项目前就存在） | 源码安装 |
+| docker + /etc/docker/daemon.json（mirror 配置）+ 镜像 mysql/redis/rabbitmq/etcd | `docker compose down` + 卸载 |
+| 2G swap（`/swapfile`） | 项目前已存在，非本项目创建 |
+
+### 本机（Windows）遗留
+
+| 对象 | 状态 |
+|---|---|
+| `C:\WSL\jammy-wsl.rootfs.tar.gz` | ✅ 已删除（2026-10-06，WSL 弃用） |
+| `C:\WSL\ubuntu-22.04.5-live-server-amd64.iso`、`C:\WSL\im-system.bundle`、`C:\WSL\plink.exe`、`C:\WSL\*.txt` 脚本 | 项目收口时可删 |
+| `C:\WSL\VirtualBox-7.2.20-175154-Win.exe`、`C:\WSL\PortableGit.7z.exe` | 可删（已装完/解压） |
+| `C:\PortableGit\` | Windows 侧 git，项目结束可删 |
+| `C:\Users\Mai\.ssh\im_dev_key(.pub)` | 服务器 SSH 密钥，项目结束可删 |
+| VirtualBox 程序 + `C:\WSL\im-dev\` + `C:\Users\Mai\VirtualBox VMs\im-dev\` | 已弃用，可整体卸载/删除 |
+| Windows 功能（虚拟机平台/容器已启用，hypervisor=off） | 想恢复 WSL 时：`bcdedit /set {current} hypervisorlaunchtype auto` + 修复系统组件 |
+
 ## 注意事项
 
 - 密钥类（百度 ASR、阿里云短信、数据库密码）：只存在于 conf/*.local.flags 与个人配置中，**不入 git**，换机时手动带走/重建；

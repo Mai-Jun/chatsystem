@@ -1,48 +1,65 @@
-# 环境与版本记录（M0 维护）
+# 环境与版本记录（M0 已完成回填）
 
-> 部署服务器时按此对齐版本。执行完 install_deps.sh / verify_infra.sh 后更新本文件。
+> 部署服务器时按此对齐版本。
 
-## 开发环境
+## 开发环境（2026-10-06 定稿：阿里云服务器）
 
-- 宿主：Windows（wsl.exe 已存在，Ubuntu-22.04 发行版安装中/已装）
-- 开发环境：WSL2 Ubuntu 22.04（安装命令：`wsl --install -d Ubuntu-22.04`）
-- 基础设施：docker compose（`docker/docker-compose.dev.yml`）
+- **开发/运行环境：阿里云 ECS 47.112.192.119（Ubuntu 22.04.5 LTS，2核2G + 2G swap，40G 盘）**
+- 本机 Windows：系统组件损伤，WSL2/VirtualBox 均不可用（详见 migration.md），仅作编辑器与 git 使用
+- 10月8日换新机后：优先恢复 WSL2 Ubuntu 22.04（按 scripts/install_deps.sh 一键装），服务器转回纯线上角色
+- 代码位置：服务器 `/root/chatsystem`（main 分支，含全部本地提交）；SSH 密钥已配置（本机 `~/.ssh/im_dev_key`）
 
-## 工具链版本（待 install_deps.sh 执行后回填）
+## 工具链版本（服务器实测）
 
 | 组件 | 版本 | 来源 |
 |---|---|---|
-| g++ | 待回填 | apt |
-| cmake | 待回填 | apt |
-| protoc | 待回填 | apt (libprotobuf-dev) |
-| brpc | 1.9.0 | 源码编译 |
-| redis-plus-plus | 待回填 | 源码编译 |
-| ODB / libodb-mysql | 待回填 | apt（若缺包→源码编译） |
-| gtest | 待回填 | apt (libgtest-dev) |
-| spdlog / gflags / boost / websocketpp / librabbitmq / hiredis | 待回填 | apt |
+| g++ | 11.4.0 | apt |
+| cmake | 3.22.1 | apt |
+| **protobuf（生效）** | **3.20.2** | **/usr/local（服务器原有遗留，链接器优先）** |
+| libprotobuf（apt，被遮蔽） | 3.12.4 | apt |
+| brpc | 1.9.0（/usr/local/lib/libbrpc.a） | 源码编译 |
+| redis-plus-plus | master 快照（/usr/local） | 源码编译 |
+| ODB 运行库 | 2.4.0（apt libodb/libodb-mysql） | apt |
+| **odb 编译器** | **M1 首日必须验证**（apt `odb` 包安装成功但 --version 无输出；不行则源码编译 2.5，见下） | 待验证 |
+| gtest | 1.11.0 | apt |
+| spdlog / gflags | 1.9.2 / 2.2.2 | apt |
+| websocketpp / librabbitmq / hiredis | 0.8.2 / 0.10.0 / 0.14.1 | apt |
+| cpp-httplib | v0.15.3（third_party/httplib.h） | 单头下载 |
+| docker / compose | 29.8.2 / v5.6.0（get.docker.com Aliyun 源） | 脚本 |
 
-## 基础设施镜像版本
+## 基础设施（docker compose dev，ES 暂缓）
 
-| 镜像 | 版本 | 端口 |
-|---|---|---|
-| mysql | 8.0 | 3306（root 密码见 compose 文件，仅开发用） |
-| redis | 7.2 | 6379 |
-| bitnami/etcd | 3.5 | 2379 |
-| rabbitmq | 3.12-management | 5672 / 15672（guest/guest） |
-| elasticsearch | 7.17.23 + IK | 9200 |
+| 容器 | 镜像 | 端口 | 状态 |
+|---|---|---|---|
+| im-mysql | mysql:8.0（performance_schema=off） | 3306 | ✅ healthy |
+| im-redis | redis:7.2 | 6379 | ✅ healthy |
+| im-etcd | **quay.io/coreos/etcd:v3.5.16**（bitnami 被镜像源拒；官方镜像+显式监听参数） | 2379 | ✅ |
+| im-rabbitmq | rabbitmq:3.12-management | 5672/15672 | ✅ healthy |
+| elasticsearch | **服务器暂缓**（内存策略，heap512 起不来时搜索降级 LIKE） | 9200 | ⏸ M6 前按内存决定 |
 
-## ODB 源码编译兜底步骤（仅当 apt 无包时）
+镜像拉取：Docker Hub 被污染，走 `docker.1ms.run` 前缀（compose 内已 retag 回标准名）；etcd 走 `quay.m.daocloud.io` 前缀。daemon.json 已配三个 mirror。
+
+## 验证结果（M0 验收，2026-10-06）
+
+- verify_infra.sh：**5/7 通过**（MySQL/Redis/etcd/RabbitMQ/管理台全绿；ES 两项暂缓）
+- gtest 冒烟测试：**编译通过、运行通过**（1/1 passed）
+- 内存基线：四件套运行中 used≈490MB，available≈900MB
+
+## M1 注意事项
+
+1. **odb 编译器验证**是 M1 第一件事：`odb --version`；不行则源码编译 ODB 2.5（步骤见 git 历史版本文档或 codesynthesis 官网）
+2. protobuf 锁定 /usr/local 的 3.20.2：编译时确保 `-I/usr/local/include` 优先，勿让 apt 的 3.12.4 头混入
+3. brpc/redis++/httplib 均在 /usr/local，链接无需额外路径
+
+## ODB 源码编译兜底步骤（仅当 apt odb 编译器不可用时）
 
 ```bash
-# 1) 编译 ODB（GCC 插件）
-sudo apt-get install -y build-essential g++ gcc libboost-dev
-wget https://www.codesynthesis.com/download/odb/2.5.0/libodb-2.5.0.tar.gz
-tar xf libodb-2.5.0.tar.gz && cd libodb-2.5.0 && ./configure && make -j$(nproc) && sudo make install
-# 2) 安装 odb 编译器（pre-built binary 包）
-wget https://www.codesynthesis.com/download/odb/2.5.0/odb-2.5.0-x86_64-linux-gnu.tar.gz
-# 3) libodb-mysql（需 default-libmysqlclient-dev）
+# ODB 2.5：odb 编译器（pre-built binary 包）+ libodb + libodb-mysql 源码编译
+# 见 https://www.codesynthesis.com/products/odb/download.xhtml
 ```
 
-## 已知坑位（记录给部署阶段）
+## 已知坑位（部署阶段照抄）
 
-- （待补充：brpc 编译、ES IK 插件源、Docker 镜像加速等实际遇到的问题）
+- Docker Hub 在国内被污染（解析到 Facebook IP）：必须配 mirror 或用 1ms.run/daocloud 前缀拉取后 retag
+- bitnami/etcd 在主流 mirror 全被拒：改用官方 quay.io/coreos/etcd + 显式 --listen-client-urls 参数（compose 已更新）
+- WSL/VBox 在旧 Windows 上不可用的完整经过见 migration.md

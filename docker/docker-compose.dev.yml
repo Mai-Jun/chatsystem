@@ -38,10 +38,13 @@ services:
       retries: 30
 
   etcd:
-    image: bitnami/etcd:3.5
+    # 官方 etcd 镜像（quay.io）；国内拉取可用 quay.m.daocloud.io 前缀后 retag
+    image: quay.io/coreos/etcd:v3.5.16
     container_name: im-etcd
-    environment:
-      ALLOW_NONE_AUTHENTICATION: "yes"
+    command:
+      - etcd
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://0.0.0.0:2379
     ports:
       - "2379:2379"
 
