@@ -1,0 +1,45 @@
+syntax = "proto3";
+package im;
+import "base.proto";
+option cc_generic_services = true;
+
+// ============================================================
+// file.proto —— 文件子服务（头像/图片/文件/语音共用）
+// 存储: 服务器本地磁盘 + MySQL 元数据
+// 端口约定: 10005
+// ============================================================
+
+message PutSingleReq { FileData data = 1; }
+message PutSingleResp {
+  bool   success = 1;
+  string errmsg  = 2;
+  string file_id = 3;
+}
+
+message PutBatchReq { repeated FileData data = 1; }
+message PutBatchResp {
+  bool            success  = 1;
+  string          errmsg   = 2;
+  repeated string file_ids = 3; // 与入参顺序一一对应
+}
+
+message GetSingleReq { string file_id = 1; }
+message GetSingleResp {
+  bool     success = 1;
+  string   errmsg  = 2;
+  FileData data    = 3;
+}
+
+message GetBatchReq { repeated string file_ids = 1; }
+message GetBatchResp {
+  bool            success = 1;
+  string          errmsg  = 2;
+  repeated FileData data  = 3; // 不存在的文件在结果中跳过并记日志
+}
+
+service FileService {
+  rpc PutSingle(PutSingleReq) returns (PutSingleResp);
+  rpc PutBatch(PutBatchReq) returns (PutBatchResp);
+  rpc GetSingle(GetSingleReq) returns (GetSingleResp);
+  rpc GetBatch(GetBatchReq) returns (GetBatchResp);
+}

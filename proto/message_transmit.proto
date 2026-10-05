@@ -1,0 +1,38 @@
+syntax = "proto3";
+package im;
+import "base.proto";
+option cc_generic_services = true;
+
+// ============================================================
+// message_transmit.proto —— 消息转发子服务
+// 职责: 校验会话/成员关系 → 调消息存储持久化(语音顺带 ASR)
+//       → 投递 RabbitMQ 广播（网关订阅后推送在线接收者）
+// 端口约定: 10003
+// ============================================================
+
+// 客户端发来的消息内容（文件类消息先经文件子服务拿 file_id）
+message MessageContent {
+  MessageType type      = 1;
+  string      content   = 2; // 文本内容
+  string      file_id   = 3; // 图片/文件/语音
+  string      file_name = 4;
+  int64       file_size = 5;
+}
+
+message MsgTransmitReq {
+  string         request_id      = 1; // 链路追踪 id
+  string         user_id         = 2; // 发送者（网关已鉴权）
+  string         chat_session_id = 3;
+  MessageContent content         = 4;
+}
+
+message MsgTransmitResp {
+  bool   success        = 1;
+  string errmsg         = 2;
+  string new_message_id = 3; // 服务端生成的消息 id（持久化成功后返回）
+  int64  create_time    = 4;
+}
+
+service MsgTransmitService {
+  rpc GetTransmitTarget(MsgTransmitReq) returns (MsgTransmitResp);
+}

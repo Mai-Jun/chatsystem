@@ -1,0 +1,39 @@
+syntax = "proto3";
+package im;
+import "base.proto";
+option cc_generic_services = true;
+
+// ============================================================
+// message_storage.proto —— 消息存储子服务
+// 职责: MySQL 权威持久化 + ES 搜索索引异步双写（ES 不可用降级 LIKE）
+// 端口约定: 10004
+// ============================================================
+
+// ---- 历史消息（分页：cursor_timestamp=0 表示取最新一页）----
+message GetHistoryReq {
+  string chat_session_id = 1;
+  int64  cursor_timestamp = 2; // 取该时间戳之前的消息，0 取最新
+  int32  limit            = 3; // 单页条数上限，建议 50
+}
+message GetHistoryResp {
+  bool                  success  = 1;
+  string                errmsg   = 2;
+  repeated MessageInfo  messages = 3; // 按时间升序返回
+}
+
+// ---- 关键字搜索（走 ES + IK 分词；降级 MySQL LIKE）----
+message SearchHistoryReq {
+  string user_id         = 1; // 鉴权 + 权限校验
+  string chat_session_id = 2; // 为空表示搜索该用户全部会话
+  string keyword         = 3;
+}
+message SearchHistoryResp {
+  bool                 success  = 1;
+  string               errmsg   = 2;
+  repeated MessageInfo messages = 3;
+}
+
+service MsgStorageService {
+  rpc GetHistoryMessage(GetHistoryReq) returns (GetHistoryResp);
+  rpc SearchHistoryMessage(SearchHistoryReq) returns (SearchHistoryResp);
+}

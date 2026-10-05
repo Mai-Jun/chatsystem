@@ -1,0 +1,74 @@
+syntax = "proto3";
+package im;
+option cc_generic_services = true;
+
+// ============================================================
+// gateway.proto —— 客户端 ↔ 网关 的应用层外壳协议
+// HTTP 请求体 / WebSocket 帧统一为 protobuf 序列化；
+// 网关按 type 字段分发到对应子服务（etcd 发现 + brpc 负载均衡）
+// 端口约定: 网关 HTTP 9000 / WebSocket 9001
+// ============================================================
+
+// 客户端请求类型（网关路由表）
+enum RequestType {
+  REQ_TYPE_UNKNOWN              = 0;
+  // 用户子服务
+  REQ_TYPE_SEND_SMS_CODE        = 1;
+  REQ_TYPE_REGISTER             = 2;
+  REQ_TYPE_LOGIN                = 3;
+  REQ_TYPE_LOGOUT               = 4;
+  REQ_TYPE_GET_USER_INFO        = 5;
+  REQ_TYPE_SET_USER_INFO        = 6;
+  REQ_TYPE_SET_USER_AVATAR      = 7;
+  // 好友子服务
+  REQ_TYPE_SEARCH_USER          = 10;
+  REQ_TYPE_SEND_FRIEND_APPLY    = 11;
+  REQ_TYPE_PROCESS_FRIEND_APPLY = 12;
+  REQ_TYPE_DEL_FRIEND           = 13;
+  REQ_TYPE_GET_FRIEND_LIST      = 14;
+  REQ_TYPE_GET_PENDING_EVENTS   = 15;
+  REQ_TYPE_CREATE_GROUP_SESSION = 16;
+  REQ_TYPE_GET_SESSION_MEMBER   = 17;
+  REQ_TYPE_GET_SESSION_LIST     = 18;
+  // 消息
+  REQ_TYPE_TRANSMIT_MESSAGE     = 20; // body = MsgTransmitReq（子服务消息）
+  REQ_TYPE_GET_HISTORY          = 21; // body = GetHistoryReq
+  REQ_TYPE_SEARCH_HISTORY       = 22; // body = SearchHistoryReq
+  // 文件
+  REQ_TYPE_PUT_SINGLE_FILE      = 30; // body = PutSingleReq
+  REQ_TYPE_PUT_BATCH_FILE       = 31; // body = PutBatchReq
+  REQ_TYPE_GET_SINGLE_FILE      = 32; // body = GetSingleReq
+  REQ_TYPE_GET_BATCH_FILE       = 33; // body = GetBatchReq
+  // 语音
+  REQ_TYPE_SPEECH_RECOGNITION   = 40; // body = SpeechRecognitionReq
+}
+
+// 客户端 → 网关 统一外壳（HTTP body）
+message ClientRequest {
+  string      request_id = 1; // 客户端生成，响应按此匹配
+  RequestType type       = 2;
+  string      token      = 3; // 登录后必带；注册/登录/验证码请求可空
+  bytes       body       = 4; // 具体 Req 的序列化结果
+}
+
+// 网关 → 客户端 统一响应（HTTP body / WS 帧）
+message ServerResponse {
+  string request_id = 1;
+  bool   success    = 2;
+  string errmsg     = 3;
+  bytes  body       = 4; // 具体 Resp 的序列化结果
+}
+
+// 网关 → 客户端 主动推送类型（仅 WebSocket）
+enum PushType {
+  PUSH_TYPE_UNKNOWN       = 0;
+  PUSH_TYPE_NEW_MESSAGE   = 1; // body = MessageInfo（收到新消息）
+  PUSH_TYPE_FRIEND_APPLY  = 2; // body = FriendApplyInfo（收到好友申请）
+  PUSH_TYPE_GROUP_EVENT   = 3; // body = GroupEventInfo（被拉入群）
+}
+
+// 网关 → 客户端 主动推送外壳（仅 WebSocket 帧）
+message ServerPush {
+  PushType type = 1;
+  bytes    body = 2;
+}

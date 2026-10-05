@@ -1,0 +1,129 @@
+syntax = "proto3";
+package im;
+import "base.proto";
+option cc_generic_services = true;
+
+// ============================================================
+// friend.proto —— 好友子服务：搜索/申请/群聊/待处理事件
+// 端口约定: 10002
+// ============================================================
+
+// 好友申请条目
+message FriendApplyInfo {
+  string      apply_id    = 1;
+  string      user_id     = 2; // 申请人
+  string      peer_id     = 3; // 被申请人
+  ApplyStatus status      = 4;
+  string      apply_note  = 5;
+  int64       create_time = 6;
+}
+
+// 群聊事件条目（被拉入群）
+message GroupEventInfo {
+  string event_id         = 1;
+  string group_session_id = 2;
+  string inviter_id       = 3;
+  int64  create_time      = 4;
+}
+
+// ---- 用户搜索（手机号精确 / 用户 id）----
+message SearchUserReq {
+  string user_id = 1; // 发起搜索者
+  string keyword = 2;
+}
+message SearchUserResp {
+  bool              success = 1;
+  string            errmsg  = 2;
+  repeated UserInfo result  = 3;
+}
+
+// ---- 发送好友申请 ----
+message SendFriendApplyReq {
+  string user_id    = 1; // 申请人
+  string peer_id    = 2; // 目标
+  string apply_note = 3; // 验证消息
+}
+message SendFriendApplyResp {
+  bool   success  = 1;
+  string errmsg   = 2;
+  string apply_id = 3;
+}
+
+// ---- 处理好友申请（同意后自动创建单聊会话）----
+message ProcessFriendApplyReq {
+  string      user_id = 1; // 处理人（被申请人）
+  string      apply_id = 2;
+  ApplyStatus status  = 3; // AGREE / REJECT
+}
+message ProcessFriendApplyResp {
+  bool            success      = 1;
+  string          errmsg       = 2;
+  ChatSessionInfo session_info = 3; // 同意且新建会话时返回
+}
+
+// ---- 删除好友 ----
+message DelFriendReq {
+  string user_id = 1;
+  string peer_id = 2;
+}
+message DelFriendResp {
+  bool   success = 1;
+  string errmsg  = 2;
+}
+
+// ---- 好友列表 ----
+message GetFriendListReq { string user_id = 1; }
+message GetFriendListResp {
+  bool              success     = 1;
+  string            errmsg      = 2;
+  repeated UserInfo friend_list = 3;
+}
+
+// ---- 待处理事件（好友申请 + 群聊事件）----
+message GetPendingEventsReq { string user_id = 1; }
+message GetPendingEventsResp {
+  bool                     success            = 1;
+  string                   errmsg             = 2;
+  repeated FriendApplyInfo friend_apply_events = 3;
+  repeated GroupEventInfo  group_events        = 4;
+}
+
+// ---- 创建群聊会话 ----
+message CreateGroupSessionReq {
+  string          user_id    = 1; // 创建者（群主）
+  string          group_name = 2;
+  repeated string member_ids = 3; // 初始成员（不含群主）
+}
+message CreateGroupSessionResp {
+  bool            success      = 1;
+  string          errmsg       = 2;
+  ChatSessionInfo session_info = 3;
+}
+
+// ---- 获取会话成员 ----
+message GetSessionMemberReq { string chat_session_id = 1; }
+message GetSessionMemberResp {
+  bool                        success = 1;
+  string                      errmsg  = 2;
+  repeated SessionMemberInfo  members = 3;
+}
+
+// ---- 我的所有会话列表（单聊 + 群聊，客户端首页用）----
+message GetChatSessionListReq { string user_id = 1; }
+message GetChatSessionListResp {
+  bool                     success      = 1;
+  string                   errmsg       = 2;
+  repeated ChatSessionInfo session_list = 3;
+}
+
+service FriendService {
+  rpc SearchUser(SearchUserReq) returns (SearchUserResp);
+  rpc SendFriendApply(SendFriendApplyReq) returns (SendFriendApplyResp);
+  rpc ProcessFriendApply(ProcessFriendApplyReq) returns (ProcessFriendApplyResp);
+  rpc DelFriend(DelFriendReq) returns (DelFriendResp);
+  rpc GetFriendList(GetFriendListReq) returns (GetFriendListResp);
+  rpc GetPendingEvents(GetPendingEventsReq) returns (GetPendingEventsResp);
+  rpc CreateGroupSession(CreateGroupSessionReq) returns (CreateGroupSessionResp);
+  rpc GetSessionMember(GetSessionMemberReq) returns (GetSessionMemberResp);
+  rpc GetChatSessionList(GetChatSessionListReq) returns (GetChatSessionListResp);
+}

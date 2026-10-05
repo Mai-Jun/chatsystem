@@ -1,0 +1,23 @@
+syntax = "proto3";
+package im;
+option cc_generic_services = true;
+
+// ============================================================
+// speech.proto —— 语音识别子服务（百度云短语音识别 REST API）
+// 由消息转发子服务在处理语音消息时调用；节点可按需启停
+// 端口约定: 10006
+// ============================================================
+
+message SpeechRecognitionReq {
+  bytes  speech_content = 1; // 音频二进制（pcm/wav/amr/m4a）
+  string audio_format   = 2; // 音频格式，如 "wav"
+}
+message SpeechRecognitionResp {
+  bool   success          = 1;
+  string errmsg           = 2;
+  string recognized_text  = 3; // 识别出的文本
+}
+
+service SpeechService {
+  rpc SpeechRecognition(SpeechRecognitionReq) returns (SpeechRecognitionResp);
+}
