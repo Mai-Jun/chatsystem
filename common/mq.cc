@@ -155,8 +155,8 @@ bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
   amqp_frame_t frame;
   timeval tv = one_sec_tv();
   amqp_maybe_release_buffers(conn);
-  amqp_rpc_reply_t r = amqp_simple_wait_frame_noblock(conn, &frame, &tv);
-  if (r.reply_type != AMQP_RESPONSE_NORMAL) return false;
+  int rc_wait = amqp_simple_wait_frame_noblock(conn, &frame, &tv);
+  if (rc_wait != AMQP_STATUS_OK) return false;
 
   if (frame.frame_type != AMQP_FRAME_METHOD) return true;
   if (frame.payload.method.id != AMQP_BASIC_DELIVER_METHOD) return true;
