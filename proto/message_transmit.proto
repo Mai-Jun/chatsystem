@@ -36,3 +36,11 @@ message MsgTransmitResp {
 service MsgTransmitService {
   rpc GetTransmitTarget(MsgTransmitReq) returns (MsgTransmitResp);
 }
+
+// RabbitMQ 投递载荷：消息转发子服务 → 各网关节点
+// 网关消费后按 member_user_ids 过滤本节点在线连接并推送
+message MessageDelivery {
+  string         chat_session_id  = 1;
+  MessageInfo    message          = 2;  // base.proto 公共结构
+  repeated string member_user_ids = 3;  // 会话全部成员（不含过滤）
+}

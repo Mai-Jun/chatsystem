@@ -32,9 +32,10 @@
 | 文件 | 状态 | 说明 |
 |---|---|---|
 | `C:\WSL\jammy-wsl.rootfs.tar.gz` | ✅ 已删除（2026-10-06） | WSL 专用 rootfs，VirtualBox 方案用不上；新机将重新下载 |
-| `C:\WSL\ubuntu-22.04.5-live-server-amd64.iso` | 保留（2GB） | 虚拟机救援/重装用；项目收口确认稳定后可删 |
-| `C:\WSL\VirtualBox-7.2.20-175154-Win.exe` | 可删 | 安装包，已装完 |
-| `C:\WSL\PortableGit.7z.exe` | 可删 | 已解压到 `C:\PortableGit`（Windows 侧 git 继续用） |
+| `C:\WSL\ubuntu-22.04.5-live-server-amd64.iso`、`VirtualBox-*.exe`、`PortableGit.7z.exe`、bundle、临时脚本 | ✅ 已删除（2026-10-06 夜间清扫） | |
+| VirtualBox 虚拟机 im-dev（注册+磁盘+目录） | ✅ 已删除（unregistervm --delete） | |
+| VirtualBox **程序本体** | 待卸载（需管理员，留待用户） | 控制面板卸载即可 |
+| `C:\WSL\plink.exe`、`C:\PortableGit\`、`~/.ssh/im_dev_key` | **暂保留**（推送/服务器访问在用） | 项目收口时删 |
 | `C:\PortableGit\` | 项目结束时可删 | Windows 侧便携 git |
 | `C:\WSL\im-dev\` + `C:\Users\Mai\VirtualBox VMs\im-dev\` | 保留 | 虚拟机磁盘与配置；换新机时整目录可迁移或重建 |
 | Windows 已启用的功能（虚拟机平台/容器/hypervisor=auto） | 保留无害 | 新机无需复制；这台机器日后想用 WSL 需先修复系统组件 |

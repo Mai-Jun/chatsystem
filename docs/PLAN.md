@@ -151,7 +151,15 @@ ES 索引 `im-message`：session_id / sender_id / type / content(ik_max_word) / 
 - 百度 ASR 与阿里云短信密钥放服务器配置（不入 git），服务器需公网出口；
 - 服务器装 Ubuntu 22.04 与 WSL2 一致，编译产物直接 scp。
 
-## 十二、风险与备注
+## 十二、新会话续接指南（给下一次会话/新机器的自己）
+
+1. **计划与进度就在本文件**：`docs/PLAN.md` 的「十、里程碑」表里有每阶段状态列；已完成工作看 `git log --oneline`；环境事实看 `docs/env.md`；所有清理事项看 `docs/migration.md`。
+2. **代码位置**：阿里云服务器 `/root/chatsystem`（最新，SSH 密钥登录：`ssh -i ~/.ssh/im_dev_key root@47.112.192.119`）；GitHub `Mai-Jun/chatsystem`（推送滞后时以服务器为准）。
+3. **服务器上已可直接开发**：依赖全装好（见 env.md），基础设施四件套在跑（docker compose -f docker/docker-compose.dev.yml），冒烟测试 `cmake -S . -B build && cmake --build build && ctest --test-dir build`。
+4. **恢复上下文的最短路径**：读本文件「二、技术栈」「八、关键设计点」「十、里程碑状态列」→ `git log` → env.md。当前阶段：M0 完成，M1 进行中。
+5. M1 第一件事：验证服务器 odb 编译器（`odb --version`；不行按 env.md 的兜底步骤源码编译）。
+
+## 十三、风险与备注
 
 - brpc 对 protobuf 版本敏感：M0 锁定 protobuf 3.12（Ubuntu 22.04 apt 默认）+ brpc 1.9.0，记录于 env.md；
 - WSL2 首次编译 brpc 约 20~40 分钟属正常；代码在 /mnt/c 上编译比 WSL 原生文件系统慢，可接受，追求速度可把仓库 clone 到 WSL home；

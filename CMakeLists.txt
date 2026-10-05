@@ -4,7 +4,11 @@ project(im_system LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# 生成物带 RPATH，便于服务器直接运行
+set(CMAKE_BUILD_RPATH "/usr/local/lib")
 
-# M0：仅冒烟测试；M1 起逐步加入 common 公共库与各子服务
+add_subdirectory(proto)
+add_subdirectory(common)
+
 enable_testing()
 add_subdirectory(test)
