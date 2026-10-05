@@ -153,8 +153,9 @@ bool MqSubscriber::setup(amqp_connection_state_t conn) {
 
 bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
   amqp_frame_t frame;
+  timeval tv = one_sec_tv();
   amqp_maybe_release_buffers(conn);
-  amqp_rpc_reply_t r = amqp_simple_wait_frame_noblock(conn, &frame, \one_sec_tv())one_sec_tv());
+  amqp_rpc_reply_t r = amqp_simple_wait_frame_noblock(conn, &frame, &tv);
   if (r.reply_type != AMQP_RESPONSE_NORMAL) return false;
 
   if (frame.frame_type != AMQP_FRAME_METHOD) return true;
@@ -163,14 +164,14 @@ bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
   auto* deliver = reinterpret_cast<amqp_basic_deliver_t*>(frame.payload.method.decoded);
 
   // header
-  amqp_simple_wait_frame_noblock(conn, &frame, \one_sec_tv())one_sec_tv());
+  amqp_simple_wait_frame_noblock(conn, &frame, &tv);
   if (frame.frame_type != AMQP_FRAME_HEADER) return true;
   uint64_t body_size = frame.payload.properties.body_size;
 
   std::string body;
   body.reserve(static_cast<size_t>(body_size));
   while (body.size() < body_size) {
-    amqp_simple_wait_frame_noblock(conn, &frame, \one_sec_tv())one_sec_tv());
+    amqp_simple_wait_frame_noblock(conn, &frame, &tv);
     if (frame.frame_type != AMQP_FRAME_BODY) break;
     body.append(reinterpret_cast<char*>(frame.payload.body_fragment.bytes),
                 frame.payload.body_fragment.len);
