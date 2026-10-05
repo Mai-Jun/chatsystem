@@ -18,7 +18,7 @@
 // 文件子服务：单/批量上传下载（本地磁盘 + MySQL 元数据）
 // 文件实体路径: storage_path/<file_id>；元数据表 file
 // ============================================================
-namespace im {
+using namespace im;  // NOLINT: main 中直接使用 FLAGS_*
 
 namespace fs = std::filesystem;
 
@@ -146,8 +146,6 @@ class FileServiceImpl : public FileService {
   odb::mysql::database* db_;
 };
 
-}  // namespace im
-
 int main(int argc, char* argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
   im::init_logger(FLAGS_log_dir, FLAGS_service_name, FLAGS_log_level);
@@ -170,7 +168,7 @@ int main(int argc, char* argv[]) {
 
   // RPC 服务
   brpc::Server server;
-  im::FileServiceImpl impl(db.get());
+  FileServiceImpl impl(db.get());
   if (server.AddService(&impl, brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
     LOG_ERROR("AddService 失败");
     return 1;
