@@ -9,6 +9,7 @@ set(CMAKE_BUILD_RPATH "/usr/local/lib")
 
 add_subdirectory(proto)
 add_subdirectory(common)
+add_subdirectory(server/file_server)  # M2
 
 enable_testing()
 add_subdirectory(test)

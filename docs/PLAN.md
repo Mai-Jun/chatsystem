@@ -130,7 +130,7 @@ ES 索引 `im-message`：session_id / sender_id / type / content(ik_max_word) / 
 | 阶段 | 内容 | 验收标准 | 估时 | 状态 |
 |---|---|---|---|---|
 | M0 | WSL2 环境 + 依赖脚本 + 仓库骨架 + compose(dev) + gtest 冒烟 | 五件套可用，冒烟测试通过 | 1~2 天 | ✅ 完成（环境改用阿里云服务器，ES 暂缓；详见 docs/env.md） |
-| M1 | proto 全量 + 公共库（含 ODB 实体/ES 客户端/短信接口）+ gtest 套件 | 单测全绿 | 4~5 天 | |
+| M1 | proto 全量 + 公共库（含 ODB 实体/ES 客户端/短信接口）+ gtest 套件 | 单测全绿 | 4~5 天 | ✅ 完成（8 proto 编译；etcd 注册发现/brpc 通道/ODB CRUD/Redis/MQ 集成测试全绿） |
 | M2 | 建表 + ES 索引初始化 + 文件子服务 | curl 单/批量上传下载 + 单测 | 2~3 天 | |
 | M3 | 用户子服务（含短信验证码注册/登录） | 测试客户端全流程通过 | 3~4 天 | |
 | M4 | 网关雏形：HTTP 分发 + token 鉴权 | 模拟客户端走通注册登录 | 2 天 | |
