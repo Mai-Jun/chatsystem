@@ -2,14 +2,14 @@
 #include <string>
 #include <cstdint>
 
-#include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <odb/core.hxx>
-#include <odb/boost/date-time/odb/boost-date-time.hxx>
+
+#include "util.hpp"
 
 // ============================================================
 // ODB 实体定义 —— 与 sql/im_system.sql 的 7 张表一一对应
 // 表已由 sql 脚本创建（ odb 不负责建表，--generate-query 模式）
-// 时间字段统一使用 boost::posix_time::ptime 映射 DATETIME
+// 时间字段统一使用字符串 "YYYY-MM-DD HH:MM:SS"（MySQL 自动转 DATETIME）
 // ============================================================
 
 namespace im {
@@ -27,7 +27,7 @@ class User {
         phone_(std::move(phone)),
         password_hash_(std::move(password_hash)),
         avatar_file_id_(std::move(avatar_file_id)) {
-    create_time_ = boost::posix_time::microsec_clock::universal_time();
+    create_time_ = now_datetime_str();
     update_time_ = create_time_;
   }
 
@@ -41,9 +41,9 @@ class User {
   void password_hash(const std::string& v) { password_hash_ = v; }
   const std::string& avatar_file_id() const { return avatar_file_id_; }
   void avatar_file_id(const std::string& v) { avatar_file_id_ = v; }
-  const boost::posix_time::ptime& create_time() const { return create_time_; }
-  const boost::posix_time::ptime& update_time() const { return update_time_; }
-  void touch() { update_time_ = boost::posix_time::microsec_clock::universal_time(); }
+  const std::string& create_time() const { return create_time_; }
+  const std::string& update_time() const { return update_time_; }
+  void touch() { update_time_ = now_datetime_str(); }
 
  private:
   friend class odb::access;
@@ -61,9 +61,9 @@ class User {
 #pragma db column("avatar_file_id")
   std::string avatar_file_id_;
 #pragma db type("DATETIME") column("create_time")
-  boost::posix_time::ptime create_time_;
+  std::string create_time_;
 #pragma db type("DATETIME") column("update_time")
-  boost::posix_time::ptime update_time_;
+  std::string update_time_;
 };
 
 // 好友申请表
@@ -78,7 +78,7 @@ class FriendApply {
         peer_id_(std::move(peer_id)),
         status_(status),
         apply_note_(std::move(apply_note)) {
-    create_time_ = boost::posix_time::microsec_clock::universal_time();
+    create_time_ = now_datetime_str();
     update_time_ = create_time_;
   }
 
@@ -88,9 +88,9 @@ class FriendApply {
   int status() const { return status_; }
   void status(int v) { status_ = v; }
   const std::string& apply_note() const { return apply_note_; }
-  const boost::posix_time::ptime& create_time() const { return create_time_; }
-  const boost::posix_time::ptime& update_time() const { return update_time_; }
-  void touch() { update_time_ = boost::posix_time::microsec_clock::universal_time(); }
+  const std::string& create_time() const { return create_time_; }
+  const std::string& update_time() const { return update_time_; }
+  void touch() { update_time_ = now_datetime_str(); }
 
  private:
   friend class odb::access;
@@ -106,9 +106,9 @@ class FriendApply {
 #pragma db column("apply_note")
   std::string apply_note_;
 #pragma db type("DATETIME") column("create_time")
-  boost::posix_time::ptime create_time_;
+  std::string create_time_;
 #pragma db type("DATETIME") column("update_time")
-  boost::posix_time::ptime update_time_;
+  std::string update_time_;
 };
 
 // 好友关系表（互为好友写两行）
@@ -118,13 +118,13 @@ class FriendRelation {
   FriendRelation() = default;
   FriendRelation(std::string id, std::string user_id, std::string peer_id)
       : id_(std::move(id)), user_id_(std::move(user_id)), peer_id_(std::move(peer_id)) {
-    create_time_ = boost::posix_time::microsec_clock::universal_time();
+    create_time_ = now_datetime_str();
   }
 
   const std::string& id() const { return id_; }
   const std::string& user_id() const { return user_id_; }
   const std::string& peer_id() const { return peer_id_; }
-  const boost::posix_time::ptime& create_time() const { return create_time_; }
+  const std::string& create_time() const { return create_time_; }
 
  private:
   friend class odb::access;
@@ -136,7 +136,7 @@ class FriendRelation {
 #pragma db column("peer_id")
   std::string peer_id_;
 #pragma db type("DATETIME") column("create_time")
-  boost::posix_time::ptime create_time_;
+  std::string create_time_;
 };
 
 // 会话表
@@ -146,14 +146,14 @@ class ChatSession {
   ChatSession() = default;
   ChatSession(std::string id, std::string name, int type, std::string creator_id)
       : id_(std::move(id)), name_(std::move(name)), type_(type), creator_id_(std::move(creator_id)) {
-    create_time_ = boost::posix_time::microsec_clock::universal_time();
+    create_time_ = now_datetime_str();
   }
 
   const std::string& id() const { return id_; }
   const std::string& name() const { return name_; }
   int type() const { return type_; }
   const std::string& creator_id() const { return creator_id_; }
-  const boost::posix_time::ptime& create_time() const { return create_time_; }
+  const std::string& create_time() const { return create_time_; }
 
  private:
   friend class odb::access;
@@ -167,7 +167,7 @@ class ChatSession {
 #pragma db column("creator_id")
   std::string creator_id_;
 #pragma db type("DATETIME") column("create_time")
-  boost::posix_time::ptime create_time_;
+  std::string create_time_;
 };
 
 // 会话成员表
@@ -177,13 +177,13 @@ class ChatSessionMember {
   ChatSessionMember() = default;
   ChatSessionMember(std::string id, std::string session_id, std::string user_id)
       : id_(std::move(id)), session_id_(std::move(session_id)), user_id_(std::move(user_id)) {
-    create_time_ = boost::posix_time::microsec_clock::universal_time();
+    create_time_ = now_datetime_str();
   }
 
   const std::string& id() const { return id_; }
   const std::string& session_id() const { return session_id_; }
   const std::string& user_id() const { return user_id_; }
-  const boost::posix_time::ptime& create_time() const { return create_time_; }
+  const std::string& create_time() const { return create_time_; }
 
  private:
   friend class odb::access;
@@ -195,7 +195,7 @@ class ChatSessionMember {
 #pragma db column("user_id")
   std::string user_id_;
 #pragma db type("DATETIME") column("create_time")
-  boost::posix_time::ptime create_time_;
+  std::string create_time_;
 };
 
 // 消息表（MySQL 权威存储）
@@ -215,7 +215,7 @@ class Message {
         file_name_(std::move(file_name)),
         file_size_(file_size),
         asr_text_(std::move(asr_text)) {
-    create_time_ = boost::posix_time::microsec_clock::universal_time();
+    create_time_ = now_datetime_str();
   }
 
   const std::string& id() const { return id_; }
@@ -229,7 +229,7 @@ class Message {
   int64_t file_size() const { return file_size_; }
   const std::string& asr_text() const { return asr_text_; }
   void asr_text(const std::string& v) { asr_text_ = v; }
-  const boost::posix_time::ptime& create_time() const { return create_time_; }
+  const std::string& create_time() const { return create_time_; }
 
  private:
   friend class odb::access;
@@ -253,7 +253,7 @@ class Message {
 #pragma db column("asr_text") type("TEXT")
   std::string asr_text_;
 #pragma db type("DATETIME") column("create_time")
-  boost::posix_time::ptime create_time_;
+  std::string create_time_;
 };
 
 // 文件元数据表（实体存本地磁盘）
@@ -266,14 +266,14 @@ class FileMeta {
         file_name_(std::move(file_name)),
         file_size_(file_size),
         file_path_(std::move(file_path)) {
-    create_time_ = boost::posix_time::microsec_clock::universal_time();
+    create_time_ = now_datetime_str();
   }
 
   const std::string& id() const { return id_; }
   const std::string& file_name() const { return file_name_; }
   int64_t file_size() const { return file_size_; }
   const std::string& file_path() const { return file_path_; }
-  const boost::posix_time::ptime& create_time() const { return create_time_; }
+  const std::string& create_time() const { return create_time_; }
 
  private:
   friend class odb::access;
@@ -287,7 +287,7 @@ class FileMeta {
 #pragma db column("file_path")
   std::string file_path_;
 #pragma db type("DATETIME") column("create_time")
-  boost::posix_time::ptime create_time_;
+  std::string create_time_;
 };
 
 }  // namespace im

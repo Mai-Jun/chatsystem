@@ -15,6 +15,9 @@ std::string uuid();
 int64_t now_seconds();
 int64_t now_milliseconds();
 
+// 当前本地时间，格式 "YYYY-MM-DD HH:MM:SS"（对应 MySQL DATETIME）
+std::string now_datetime_str();
+
 // base64（etcd v3 HTTP 接口的 key/value 都是 base64）
 std::string base64_encode(const std::string& raw);
 std::string base64_decode(const std::string& encoded);

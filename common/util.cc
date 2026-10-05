@@ -30,6 +30,15 @@ int64_t now_milliseconds() {
              std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+std::string now_datetime_str() {
+  std::time_t t = std::time(nullptr);
+  std::tm tm{};
+  localtime_r(&t, &tm);
+  char buf[32] = {0};
+  std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+  return std::string(buf);
+}
+
 // ---- base64 ----
 namespace {
 const char kB64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
