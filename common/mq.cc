@@ -184,6 +184,17 @@ bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
 
 bool MqSubscriber::start() {
   if (running_) return true;
+  // 连接与声明在调用线程同步完成，避免"发布早于绑定"的竞态
+  if (!open_connection(host_, port_, user_, password_, &conn_)) {
+    LOG_WARN("MQ 消费连接失败");
+    return false;
+  }
+  if (!setup(conn_)) {
+    LOG_WARN("MQ 声明失败");
+    close_connection(conn_);
+    conn_ = nullptr;
+    return false;
+  }
   running_ = true;
   thread_ = std::thread([this]() { consume_loop(); });
   return true;
@@ -193,31 +204,36 @@ void MqSubscriber::stop() {
   if (!running_) return;
   running_ = false;
   if (thread_.joinable()) thread_.join();
+  close_connection(conn_);
+  conn_ = nullptr;
 }
 
 void MqSubscriber::consume_loop() {
+  int fails = 0;
   while (running_) {
-    amqp_connection_state_t conn = nullptr;
-    if (!open_connection(host_, port_, user_, password_, &conn)) {
-      LOG_WARN("MQ 消费连接失败，2 秒后重试");
-      std::this_thread::sleep_for(std::chrono::seconds(2));
-      continue;
-    }
-    if (!setup(conn)) {
-      LOG_WARN("MQ 声明失败，2 秒后重试");
-      close_connection(conn);
-      std::this_thread::sleep_for(std::chrono::seconds(2));
-      continue;
-    }
-    LOG_INFO("MQ 消费就绪: queue={} binding={}", queue_, binding_key_);
-    while (running_) {
-      if (!consume_once(conn)) {
-        if (!running_) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        continue;
+    if (!consume_once(conn_)) {
+      if (!running_) break;
+      // 连续失败视为连接异常：断开重连
+      if (++fails >= 3) {
+        LOG_WARN("MQ 消费连续失败，重连");
+        fails = 0;
+        close_connection(conn_);
+        conn_ = nullptr;
+        while (running_ && !open_connection(host_, port_, user_, password_, &conn_)) {
+          std::this_thread::sleep_for(std::chrono::seconds(2));
+        }
+        while (running_ && !setup(conn_)) {
+          LOG_WARN("MQ 声明失败，2 秒后重试");
+          close_connection(conn_);
+          conn_ = nullptr;
+          std::this_thread::sleep_for(std::chrono::seconds(2));
+          open_connection(host_, port_, user_, password_, &conn_);
+        }
       }
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      continue;
     }
-    close_connection(conn);
+    fails = 0;
   }
 }
 

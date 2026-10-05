@@ -47,7 +47,7 @@ const char kB64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01
 std::string base64_encode(const std::string& raw) {
   std::string out;
   out.reserve((raw.size() + 2) / 3 * 4);
-  int val = 0, valb = -8;
+  int val = 0, valb = -6;
   for (unsigned char c : raw) {
     val = (val << 8) + c;
     valb += 8;
@@ -56,7 +56,7 @@ std::string base64_encode(const std::string& raw) {
       valb -= 6;
     }
   }
-  if (valb > -8) out.push_back(kB64Table[((val << 8) >> (valb + 8)) & 0x3F]);
+  if (valb > -6) out.push_back(kB64Table[((val << 8) >> (valb + 8)) & 0x3F]);
   while (out.size() % 4) out.push_back('=');
   return out;
 }

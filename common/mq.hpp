@@ -48,7 +48,7 @@ class MqSubscriber {
 
  private:
   void consume_loop();
-  bool setup(amqp_connection_state_t conn);  // 建连+声明交换机/队列/绑定
+  bool setup(amqp_connection_state_t conn);  // 声明交换机/队列/绑定
   bool consume_once(amqp_connection_state_t conn);
 
   std::string host_;
@@ -60,6 +60,7 @@ class MqSubscriber {
   std::string binding_key_;
   MessageCallback cb_;
 
+  amqp_connection_state_t conn_ = nullptr;
   std::atomic<bool> running_{false};
   std::thread thread_;
 };
