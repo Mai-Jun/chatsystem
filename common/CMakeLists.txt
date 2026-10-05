@@ -15,7 +15,10 @@ add_custom_command(
 add_library(im_odb STATIC ${ODB_OUT}/entities-odb.cxx)
 # ODB 2.4 生成物按 C++14 语义编译（头文件也会被上层 C++17 TU 包含，实测兼容）
 set_target_properties(im_odb PROPERTIES CXX_STANDARD 14)
-target_include_directories(im_odb PUBLIC ${ODB_OUT} ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(im_odb PUBLIC
+  ${ODB_OUT}                        # entities-odb.hxx
+  ${CMAKE_CURRENT_SOURCE_DIR}/odb   # 生成的 hxx 反向包含 entities.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR})      # "odb/entities.hpp" 形式包含
 target_link_libraries(im_odb PUBLIC odb-mysql odb pthread)
 
 add_library(im_common STATIC
