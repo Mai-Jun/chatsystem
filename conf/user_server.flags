@@ -1,0 +1,4 @@
+# 用户子服务节点（同一配置多起一份即多节点，改 instance_id 即可）
+--service_name=user_server
+--instance_id=node1
+--listen_port=10001

@@ -1,0 +1,8 @@
+# 语音识别子服务节点
+--service_name=speech_server
+--instance_id=node1
+--listen_port=10006
+
+# 百度云 ASR 密钥（正式部署写入 conf/speech_server.local.flags，不入 git）
+# --baidu_api_key=
+# --baidu_secret_key=

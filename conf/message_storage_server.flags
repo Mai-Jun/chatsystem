@@ -1,0 +1,4 @@
+# 消息存储子服务节点
+--service_name=message_storage_server
+--instance_id=node1
+--listen_port=10004

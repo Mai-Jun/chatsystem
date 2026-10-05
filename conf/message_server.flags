@@ -1,0 +1,4 @@
+# 消息转发子服务节点
+--service_name=message_server
+--instance_id=node1
+--listen_port=10003

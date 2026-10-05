@@ -1,0 +1,11 @@
+# 入口网关节点（HTTP 承载请求，WebSocket 承载推送）
+--service_name=gateway_server
+--instance_id=node1
+--http_port=9000
+--ws_port=9001
+
+# 阿里云短信密钥（写入 conf/gateway_server.local.flags 或 user 服务配置，不入 git）
+# --aliyun_sms_access_key_id=
+# --aliyun_sms_access_key_secret=
+# --aliyun_sms_sign_name=
+# --aliyun_sms_template_code=

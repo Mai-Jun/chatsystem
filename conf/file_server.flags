@@ -1,0 +1,5 @@
+# 文件子服务节点
+--service_name=file_server
+--instance_id=node1
+--listen_port=10005
+--storage_path=./data/files
