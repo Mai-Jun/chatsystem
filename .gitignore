@@ -1,0 +1,19 @@
+# 构建产物
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+third_party/httplib.h
+
+# 本地私有配置（数据库密码、云服务 AccessKey 等）
+conf/*.local.flags
+*.local
+
+# 运行期产物
+logs/
+data/
+
+# IDE
+.vscode/
+.idea/

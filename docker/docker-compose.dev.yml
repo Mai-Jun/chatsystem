@@ -1,0 +1,82 @@
+# 开发环境基础设施五件套（在 WSL2 内运行）
+# 启动: docker compose -f docker/docker-compose.dev.yml up -d
+# 验证: bash scripts/verify_infra.sh
+# 说明: M10 部署阶段另有 prod-full / prod-minimal 两套 profile（含子服务容器），此处仅基础设施。
+name: im-system-dev
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: im-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: im123456
+      MYSQL_DATABASE: im_system
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --performance-schema=OFF
+    ports:
+      - "3306:3306"
+    volumes:
+      - im-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h127.0.0.1", "-uroot", "-pim123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.2
+    container_name: im-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  etcd:
+    image: bitnami/etcd:3.5
+    container_name: im-etcd
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+    ports:
+      - "2379:2379"
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: im-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # 管理台 http://127.0.0.1:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  elasticsearch:
+    build:
+      context: .
+      dockerfile: elasticsearch.Dockerfile
+    image: im-es-7.17.23-ik
+    container_name: im-es
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - im-es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  im-mysql-data:
+  im-es-data:
