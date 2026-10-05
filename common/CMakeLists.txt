@@ -32,6 +32,9 @@ target_include_directories(im_common PUBLIC
   ${CMAKE_SOURCE_DIR}
   ${CMAKE_SOURCE_DIR}/third_party)
 target_include_directories(im_common SYSTEM PUBLIC /usr/local/include)
+# 多架构 Ubuntu 会先搜 /usr/lib/x86_64-linux-gnu（apt protobuf 3.12.4），
+# 必须显式把 /usr/local/lib 提前，保证链接到服务器遗留的 protobuf 3.20.2
+target_link_directories(im_common PUBLIC /usr/local/lib)
 target_link_libraries(im_common PUBLIC
   im_odb
   spdlog::spdlog
@@ -41,6 +44,7 @@ target_link_libraries(im_common PUBLIC
   leveldb
   rabbitmq
   hiredis
+  redis++
   uuid
   ssl
   crypto
