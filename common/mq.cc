@@ -25,13 +25,13 @@ bool open_connection(const std::string& host, int port, const std::string& user,
   }
   amqp_rpc_reply_t r = amqp_login(conn, "/", 0, 131072, 0, AMQP_SASL_METHOD_PLAIN,
                                   user.c_str(), password.c_str());
-  if (r.reply_type != AMQP_REPLY_NORMAL) {
+  if (r.reply_type != AMQP_RESPONSE_NORMAL) {
     amqp_destroy_connection(conn);
     return false;
   }
   amqp_channel_open(conn, 1);
   r = amqp_get_rpc_reply(conn);
-  if (r.reply_type != AMQP_REPLY_NORMAL) {
+  if (r.reply_type != AMQP_RESPONSE_NORMAL) {
     amqp_destroy_connection(conn);
     return false;
   }
@@ -59,7 +59,7 @@ bool MqPublisher::declare_exchange() {
                         amqp_cstring_bytes("topic"), 0 /*passive*/, 1 /*durable*/, 0 /*auto_del*/,
                         0 /*internal*/, amqp_empty_table);
   amqp_rpc_reply_t r = amqp_get_rpc_reply(conn_);
-  if (r.reply_type != AMQP_REPLY_NORMAL) {
+  if (r.reply_type != AMQP_RESPONSE_NORMAL) {
     LOG_ERROR("MQ 声明交换机失败: {} err={}", exchange_,
               amqp_error_string2(r.library_error));
     return false;
@@ -124,30 +124,30 @@ bool MqSubscriber::setup(amqp_connection_state_t conn) {
   amqp_exchange_declare(conn, 1, amqp_cstring_bytes(exchange_.c_str()),
                         amqp_cstring_bytes("topic"), 0, 1, 0, 0, amqp_empty_table);
   amqp_rpc_reply_t r = amqp_get_rpc_reply(conn);
-  if (r.reply_type != AMQP_REPLY_NORMAL) return false;
+  if (r.reply_type != AMQP_RESPONSE_NORMAL) return false;
 
   amqp_queue_declare(conn, 1, amqp_cstring_bytes(queue_.c_str()), 0 /*passive*/, 1 /*durable*/,
                      0 /*exclusive*/, 0 /*auto_del*/, amqp_empty_table);
   r = amqp_get_rpc_reply(conn);
-  if (r.reply_type != AMQP_REPLY_NORMAL) return false;
+  if (r.reply_type != AMQP_RESPONSE_NORMAL) return false;
 
   amqp_queue_bind(conn, 1, amqp_cstring_bytes(queue_.c_str()),
                   amqp_cstring_bytes(exchange_.c_str()), amqp_cstring_bytes(binding_key_.c_str()),
                   amqp_empty_table);
   r = amqp_get_rpc_reply(conn);
-  if (r.reply_type != AMQP_REPLY_NORMAL) return false;
+  if (r.reply_type != AMQP_RESPONSE_NORMAL) return false;
 
   amqp_basic_consume(conn, 1, amqp_cstring_bytes(queue_.c_str()), amqp_empty_bytes, 0, 1 /*no_ack*/,
                      0, amqp_empty_table);
   r = amqp_get_rpc_reply(conn);
-  return r.reply_type == AMQP_REPLY_NORMAL;
+  return r.reply_type == AMQP_RESPONSE_NORMAL;
 }
 
 bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
   amqp_frame_t frame;
   amqp_maybe_release_buffers(conn);
-  amqp_rpc_reply_t r = amqp_simple_wait_frame_noblock(conn, &frame, std::chrono::seconds(1));
-  if (r.reply_type != AMQP_REPLY_NORMAL) return false;
+  amqp_rpc_reply_t r = amqp_simple_wait_frame_noblock(conn, &frame, one_sec_tv());
+  if (r.reply_type != AMQP_RESPONSE_NORMAL) return false;
 
   if (frame.frame_type != AMQP_FRAME_METHOD) return true;
   if (frame.payload.method.id != AMQP_BASIC_DELIVER_METHOD) return true;
@@ -155,14 +155,14 @@ bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
   auto* deliver = reinterpret_cast<amqp_basic_deliver_t*>(frame.payload.method.decoded);
 
   // header
-  amqp_simple_wait_frame_noblock(conn, &frame, std::chrono::seconds(1));
+  amqp_simple_wait_frame_noblock(conn, &frame, one_sec_tv());
   if (frame.frame_type != AMQP_FRAME_HEADER) return true;
   uint64_t body_size = frame.payload.properties.body_size;
 
   std::string body;
   body.reserve(static_cast<size_t>(body_size));
   while (body.size() < body_size) {
-    amqp_simple_wait_frame_noblock(conn, &frame, std::chrono::seconds(1));
+    amqp_simple_wait_frame_noblock(conn, &frame, one_sec_tv());
     if (frame.frame_type != AMQP_FRAME_BODY) break;
     body.append(reinterpret_cast<char*>(frame.payload.body_fragment.bytes),
                 frame.payload.body_fragment.len);
