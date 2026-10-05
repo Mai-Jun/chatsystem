@@ -10,6 +10,14 @@ namespace im {
 
 namespace {
 
+// noblock 等待用的 1 秒超时
+timeval one_sec_tv() {
+  timeval tv{};
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  return tv;
+}
+
 // 打开连接并登录（不声明任何对象）
 bool open_connection(const std::string& host, int port, const std::string& user,
                      const std::string& password, amqp_connection_state_t* out) {
