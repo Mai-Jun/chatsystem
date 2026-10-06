@@ -105,6 +105,12 @@ int main(int argc, char* argv[]) {
   g_redis = &redis;
   g_channels = &channels;
 
+  // 启动对各子服务的节点发现（漏掉会导致对应通道永远为空）
+  for (const char* s : {"user_server", "friend_server", "message_storage_server", "file_server",
+                        "message_server"}) {
+    channels.discover(s);
+  }
+
   ServiceRegistry registry(FLAGS_etcd_endpoints, FLAGS_service_name, FLAGS_instance_id,
                            FLAGS_register_host, FLAGS_http_port, FLAGS_etcd_lease_ttl,
                            FLAGS_etcd_keepalive_interval);
