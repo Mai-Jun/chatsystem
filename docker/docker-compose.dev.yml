@@ -16,6 +16,8 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_general_ci
       - --performance-schema=OFF
+      - --wait_timeout=604800
+      - --interactive_timeout=604800
     ports:
       - "3306:3306"
     volumes:
