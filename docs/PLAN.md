@@ -153,11 +153,12 @@ ES 索引 `im-message`：session_id / sender_id / type / content(ik_max_word) / 
 
 ## 十二、新会话续接指南（给下一次会话/新机器的自己）
 
+**👉 入口文档：`docs/HANDOFF.md`（交接文档：现状/访问方式/操作手册/坑位速查/待办要点）**
+
 1. **计划与进度就在本文件**：`docs/PLAN.md` 的「十、里程碑」表里有每阶段状态列；已完成工作看 `git log --oneline`；环境事实看 `docs/env.md`；所有清理事项看 `docs/migration.md`。
 2. **代码位置**：阿里云服务器 `/root/chatsystem`（最新，SSH 密钥登录：`ssh -i ~/.ssh/im_dev_key root@47.112.192.119`）；GitHub `Mai-Jun/chatsystem`（推送滞后时以服务器为准）。
-3. **服务器上已可直接开发**：依赖全装好（见 env.md），基础设施四件套在跑（docker compose -f docker/docker-compose.dev.yml），冒烟测试 `cmake -S . -B build && cmake --build build && ctest --test-dir build`。
-4. **恢复上下文的最短路径**：读本文件「二、技术栈」「八、关键设计点」「十、里程碑状态列」→ `git log` → env.md。当前阶段：M0 完成，M1 进行中。
-5. M1 第一件事：验证服务器 odb 编译器（`odb --version`；不行按 env.md 的兜底步骤源码编译）。
+3. **服务器上已可直接开发**：依赖全装好（见 env.md），基础设施四件套在跑（docker compose -f docker/docker-compose.dev.yml），全部验收工具可重跑（gateway_sim_client / e2e_friend_msg / ctest）。
+4. **恢复上下文的最短路径**：读 HANDOFF.md → 本文件「二、技术栈」「八、关键设计点」「十、里程碑状态列」→ `git log` → env.md。当前阶段：**M7 完成，M8 语音子服务待开工**。
 
 ## 十三、风险与备注
 
