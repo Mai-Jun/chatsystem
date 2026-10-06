@@ -60,6 +60,11 @@
 
 ## 已知坑位（部署阶段照抄）
 
+- **【重要】2核1.6G 服务器禁止并行编译**：`cmake --build -j2` 编译 brpc+protobuf 头文件时，单个 cc1plus 峰值可吃 500MB~1GB，叠加 MySQL/容器后触发 OOM/swap 抖动，**会导致 sshd 无法响应**（现象：ping 正常 12ms、TCP 能建连，但 SSH 横幅永不返回，60 秒超时）。事故记录：2026-10-06 M4 构建 `-j2` 导致服务器失联约 2.5 小时。
+  - **对策**：服务器上一律 `cmake --build build -j1`；或把 swap 提到 4G；或改为本地/CI 编译后只传二进制。已固化到 `scripts/` 的部署流程。
 - Docker Hub 在国内被污染（解析到 Facebook IP）：必须配 mirror 或用 1ms.run/daocloud 前缀拉取后 retag
 - bitnami/etcd 在主流 mirror 全被拒：改用官方 quay.io/coreos/etcd + 显式 --listen-client-urls 参数（compose 已更新）
+- MySQL 闲置连接被服务端掐断（错误 4031）：已把 wait_timeout/interactive_timeout 调到 7 天（compose 已更新）
+- jammy 的 odb 2.4 编译器硬绑 g++-10：需 `apt install g++-10`（仅用于代码生成，产物用 g++-11 编译）
+- 多架构 Ubuntu 链接器优先搜 /usr/lib/x86_64-linux-gnu（apt protobuf 3.12.4），会与 brpc 所需的 3.20.2 冲突：CMake 里显式 `target_link_directories(... /usr/local/lib)`
 - WSL/VBox 在旧 Windows 上不可用的完整经过见 migration.md
