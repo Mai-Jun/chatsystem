@@ -1,5 +1,8 @@
 #include "ws_push.hpp"
 
+// 注意：Ubuntu 的 libwebsocketpp-dev 0.8.2 里 config/asio_no_tls.hpp 内容有误
+// （实际定义的是 struct asio，且 include guard 与 asio.hpp 相同），
+// 因此这里使用 websocketpp::config::asio —— 同为无 TLS 的 asio 传输。
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
@@ -19,7 +22,7 @@ namespace im {
 
 namespace {
 
-using WsServer = websocketpp::server<websocketpp::config::asio_no_tls>;
+using WsServer = websocketpp::server<websocketpp::config::asio>;
 using ConnHdl = websocketpp::connection_hdl;
 
 // weak_ptr 比较器：用作 map key

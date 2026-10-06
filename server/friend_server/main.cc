@@ -324,6 +324,7 @@ class FriendServiceImpl : public FriendService {
       return;
     }
     std::string session_id = uuid();
+    pending_events_.clear();
     try {
       odb::transaction t(db_->begin());
       db_->persist(ChatSession(session_id, req->group_name(), kSessionGroup, req->user_id()));
