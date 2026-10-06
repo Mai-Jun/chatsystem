@@ -12,6 +12,7 @@ class QListWidgetItem;
 class QLabel;
 class QPushButton;
 class QTabWidget;
+class QCloseEvent;
 
 namespace im {
 

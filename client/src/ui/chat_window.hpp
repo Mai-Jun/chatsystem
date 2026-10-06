@@ -9,6 +9,7 @@
 class QLineEdit;
 class QPushButton;
 class QTextBrowser;
+class QKeyEvent;
 
 namespace im {
 

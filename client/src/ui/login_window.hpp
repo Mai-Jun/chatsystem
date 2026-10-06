@@ -1,6 +1,7 @@
 #pragma once
 #include <QDialog>
 
+#include "base.pb.h"
 #include "gateway.pb.h"
 
 class QLineEdit;

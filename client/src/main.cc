@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QEventLoop>
 #include <QSettings>
 
 #include "gateway.pb.h"
@@ -51,7 +52,7 @@ int main(int argc, char* argv[]) {
   if (first == nullptr) {
     auto* login = new LoginWindow(&client);
     // 登录成功 → 打开主窗口（登录窗 accept 后自动销毁）
-    QObject::connect(login, &LoginWindow::loginSucceeded,
+    QObject::connect(login, &LoginWindow::loginSucceeded, login,
                      [&client](const QString& token, const im::UserInfo& user) {
                        QSettings().setValue("account/token", token);
                        auto* w = new MainWindow(&client, user);
