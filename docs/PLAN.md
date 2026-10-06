@@ -137,7 +137,7 @@ ES 索引 `im-message`：session_id / sender_id / type / content(ik_max_word) / 
 | M5 | 好友子服务 | 双账号互加好友、建群 | 3~4 天 | |
 | M6 | 消息存储子服务（MySQL + ES 双写 + 搜索降级） | 历史拉取 + ES 搜索 | 3 天 | |
 | M7 | 消息转发 + RabbitMQ + WS 推送（核心） | 端到端实时互聊 | 4~5 天 | ✅ 完成（E2E：单聊+群消息转发/持久化/MQ 广播；WS 实时推送待 M9 Qt 客户端验证） |
-| M8 | 语音子服务（百度 ASR） | 语音消息带转写文本 | 1~2 天 | |
+| M8 | 语音子服务（百度 ASR） | 语音消息带转写文本 | 1~2 天 | ✅ 完成（E2E 17/17 含语音链路；未配密钥走开发模式占位转写，真实密钥即切正式识别） |
 | M9 | Qt 客户端完整界面（含录音） | 全功能手工测试 | 7~10 天 | |
 | M10 | Docker 化 + 服务器部署 + 联调清单 | 公网双客户端互聊 | 3~4 天 | |
 
@@ -158,7 +158,7 @@ ES 索引 `im-message`：session_id / sender_id / type / content(ik_max_word) / 
 1. **计划与进度就在本文件**：`docs/PLAN.md` 的「十、里程碑」表里有每阶段状态列；已完成工作看 `git log --oneline`；环境事实看 `docs/env.md`；所有清理事项看 `docs/migration.md`。
 2. **代码位置**：阿里云服务器 `/root/chatsystem`（最新，SSH 密钥登录：`ssh -i ~/.ssh/im_dev_key root@47.112.192.119`）；GitHub `Mai-Jun/chatsystem`（推送滞后时以服务器为准）。
 3. **服务器上已可直接开发**：依赖全装好（见 env.md），基础设施四件套在跑（docker compose -f docker/docker-compose.dev.yml），全部验收工具可重跑（gateway_sim_client / e2e_friend_msg / ctest）。
-4. **恢复上下文的最短路径**：读 HANDOFF.md → 本文件「二、技术栈」「八、关键设计点」「十、里程碑状态列」→ `git log` → env.md。当前阶段：**M7 完成，M8 语音子服务待开工**。
+4. **恢复上下文的最短路径**：读 HANDOFF.md → 本文件「二、技术栈」「八、关键设计点」「十、里程碑状态列」→ `git log` → env.md。当前阶段：**M8 完成，M9 Qt 客户端待开工**。
 
 ## 十三、风险与备注
 

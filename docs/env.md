@@ -68,3 +68,5 @@
 - jammy 的 odb 2.4 编译器硬绑 g++-10：需 `apt install g++-10`（仅用于代码生成，产物用 g++-11 编译）
 - 多架构 Ubuntu 链接器优先搜 /usr/lib/x86_64-linux-gnu（apt protobuf 3.12.4），会与 brpc 所需的 3.20.2 冲突：CMake 里显式 `target_link_directories(... /usr/local/lib)`
 - WSL/VBox 在旧 Windows 上不可用的完整经过见 migration.md
+- **pkill -x 匹配不到超 15 字符进程名**（Linux comm 截断）：`message_storage_server` 的 comm 是 `message_storage`，`pkill -x` 漏杀 → 旧进程占端口、新实例 "Fail to listen"（M8 事故）。停服务一律 `pkill -f "build/server/<服务名>/"`。
+- **httplib 开 OpenSSL 必须全局统一**：根 CMakeLists `add_compile_definitions(CPPHTTPLIB_OPENSSL_SUPPORT)`（M8 百度 ASR 走 HTTPS）；只给单个 TU 定义会与其他包含 httplib 的 TU 构成 ODR 违规。
