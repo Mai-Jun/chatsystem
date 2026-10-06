@@ -9,6 +9,16 @@ option cc_generic_services = true;
 // 端口约定: 10004
 // ============================================================
 
+// ---- 消息持久化（由消息转发子服务调用）----
+// 语义：MySQL 权威写入成功后返回；ES 索引为异步双写，失败不影响主流程
+message SaveMessageReq {
+  MessageInfo message = 1;
+}
+message SaveMessageResp {
+  bool   success = 1;
+  string errmsg  = 2;
+}
+
 // ---- 历史消息（分页：cursor_timestamp=0 表示取最新一页）----
 message GetHistoryReq {
   string chat_session_id = 1;
@@ -34,6 +44,7 @@ message SearchHistoryResp {
 }
 
 service MsgStorageService {
+  rpc SaveMessage(SaveMessageReq) returns (SaveMessageResp);
   rpc GetHistoryMessage(GetHistoryReq) returns (GetHistoryResp);
   rpc SearchHistoryMessage(SearchHistoryReq) returns (SearchHistoryResp);
 }
