@@ -142,7 +142,7 @@ class PendingDialog : public QDialog {
         });
   }
 
-  void process(QListWidgetItem* item, int status) {
+  void process(QListWidgetItem* item, im::ApplyStatus status) {
     ProcessFriendApplyReq req;
     req.set_user_id(my_id_.toStdString());
     req.set_apply_id(item->data(Qt::UserRole).toString().toStdString());
