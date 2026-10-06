@@ -12,6 +12,7 @@ add_subdirectory(common)
 add_subdirectory(server/file_server)  # M2
 add_subdirectory(server/user_server)  # M3
 add_subdirectory(server/gateway_server)  # M4
+add_subdirectory(server/friend_server)  # M5
 
 enable_testing()
 add_subdirectory(test)

@@ -256,6 +256,44 @@ class Message {
   int64_t create_time_;
 };
 
+// 群聊事件表（M5 新增第 8 张表：记录"被拉入群"等待处理事件）
+#pragma db object table("group_event")
+class GroupEvent {
+ public:
+  GroupEvent() = default;
+  GroupEvent(std::string id, std::string session_id, std::string user_id, std::string inviter_id)
+      : id_(std::move(id)),
+        session_id_(std::move(session_id)),
+        user_id_(std::move(user_id)),
+        inviter_id_(std::move(inviter_id)) {
+    create_time_ = now_seconds();
+  }
+
+  const std::string& id() const { return id_; }
+  const std::string& session_id() const { return session_id_; }
+  const std::string& user_id() const { return user_id_; }
+  const std::string& inviter_id() const { return inviter_id_; }
+  int status() const { return status_; }
+  void status(int v) { status_ = v; }
+  int64_t create_time() const { return create_time_; }
+
+ private:
+  friend class odb::access;
+
+#pragma db id
+  std::string id_;
+#pragma db column("session_id")
+  std::string session_id_;
+#pragma db column("user_id")
+  std::string user_id_;
+#pragma db column("inviter_id")
+  std::string inviter_id_;
+#pragma db column("status")
+  int status_ = 0;
+#pragma db type("BIGINT") column("create_time")
+  int64_t create_time_ = 0;
+};
+
 // 文件元数据表（实体存本地磁盘）
 #pragma db object table("file")
 class FileMeta {

@@ -79,6 +79,20 @@ CREATE TABLE IF NOT EXISTS `message` (
   KEY `idx_session_time` (`session_id`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息表';
 
+-- 群聊事件表（第 8 张表，M5 新增）
+-- 理由：原 7 表设计中"被拉入群"这类待处理事件无处存放；事件需记录
+--       "谁邀请我进哪个群"，独立表最直接且可扩展（后续可加退群/踢人事件）。
+CREATE TABLE IF NOT EXISTS `group_event` (
+  `id`          VARCHAR(64) NOT NULL COMMENT 'uuid',
+  `session_id`  VARCHAR(64) NOT NULL COMMENT '群会话 id',
+  `user_id`     VARCHAR(64) NOT NULL COMMENT '被邀请人',
+  `inviter_id`  VARCHAR(64) NOT NULL COMMENT '邀请人',
+  `status`      TINYINT     NOT NULL DEFAULT 0 COMMENT '0未读 1已读',
+  `create_time` BIGINT      NOT NULL DEFAULT 0 COMMENT '秒级时间戳',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_status` (`user_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群聊事件表';
+
 -- 文件元数据表（实体存本地磁盘）
 CREATE TABLE IF NOT EXISTS `file` (
   `id`          VARCHAR(64)  NOT NULL COMMENT 'uuid',
