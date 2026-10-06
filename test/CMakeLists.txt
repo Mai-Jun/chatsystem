@@ -11,7 +11,8 @@ target_link_libraries(common_tests PRIVATE
   GTest::gtest GTest::gtest_main
   im_common im_proto)
 # M4 模拟客户端（服务器上运行，走网关全链路）
+# 显式补 gflags：im_common 展开后 brpc 仍需 gflags 符号，放最后确保被解析
 add_executable(gateway_sim_client gateway_sim_client.cc)
-target_link_libraries(gateway_sim_client PRIVATE im_common im_proto)
+target_link_libraries(gateway_sim_client PRIVATE im_common im_proto gflags)
 
 add_test(NAME common_tests COMMAND common_tests)
