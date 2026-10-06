@@ -35,10 +35,11 @@ struct Ctx {
 };
 
 // 各子服务分发实现（分文件，降低单 TU 内存峰值）
-bool dispatch_user(const Ctx& ctx, Result* out);    // user_server  (handlers_user.cc)
-bool dispatch_friend(const Ctx& ctx, Result* out);  // friend_server (handlers_friend.cc)
-bool dispatch_msg(const Ctx& ctx, Result* out);     // message_storage_server
-bool dispatch_file(const Ctx& ctx, Result* out);    // file_server
+bool dispatch_user(const Ctx& ctx, Result* out);      // user_server  (handlers_user.cc)
+bool dispatch_friend(const Ctx& ctx, Result* out);    // friend_server (handlers_friend.cc)
+bool dispatch_msg(const Ctx& ctx, Result* out);       // message_storage_server
+bool dispatch_file(const Ctx& ctx, Result* out);      // file_server
+bool dispatch_transmit(const Ctx& ctx, Result* out);  // message_server (handlers_transmit.cc)
 
 // 通用转发：解析 body → (可选)注入 user_id → 调子服务 → 填充 result
 template <typename ReqT, typename RespT, typename StubT, typename MethodT>

@@ -11,6 +11,7 @@
 #include "gateway.pb.h"
 #include "logger.hpp"
 #include "redis_client.hpp"
+#include "ws_push.hpp"
 
 // ============================================================
 // 入口网关：客户端唯一入口
@@ -68,6 +69,9 @@ bool route_of(RequestType t, Route* out) {
     case REQ_TYPE_SEARCH_HISTORY:
       *out = {"message_storage_server", true, true};
       return true;
+    case REQ_TYPE_TRANSMIT_MESSAGE:
+      *out = {"message_server", true, true};  // 发消息：user_id 由网关注入
+      return true;
     case REQ_TYPE_PUT_SINGLE_FILE:
     case REQ_TYPE_PUT_BATCH_FILE:
     case REQ_TYPE_GET_SINGLE_FILE:
@@ -114,6 +118,13 @@ int main(int argc, char* argv[]) {
   svr.Get("/health", [](const httplib::Request&, httplib::Response& res) {
     res.set_content("ok", "text/plain");
   });
+
+  // WebSocket 推送 + MQ 桥接（本节点在线用户接收实时消息）
+  auto pusher = make_ws_pusher(FLAGS_ws_port, FLAGS_instance_id);
+  if (!pusher->start()) {
+    LOG_WARN("WebSocket 未启动（HTTP 请求仍可用，实时推送不可用）");
+  }
+  auto mq_bridge = start_mq_bridge(pusher.get(), FLAGS_instance_id);
 
   svr.Post("/gateway", [](const httplib::Request& req, httplib::Response& res) {
     ClientRequest creq;
@@ -167,7 +178,8 @@ int main(int argc, char* argv[]) {
     bool handled = gateway::dispatch_user(ctx, &result) ||
                    gateway::dispatch_friend(ctx, &result) ||
                    gateway::dispatch_msg(ctx, &result) ||
-                   gateway::dispatch_file(ctx, &result);
+                   gateway::dispatch_file(ctx, &result) ||
+                   gateway::dispatch_transmit(ctx, &result);
     if (!handled) {
       result.success = false;
       result.errmsg = "未实现的分发分支: " + std::to_string(creq.type());

@@ -10,6 +10,7 @@
 #include "flags.hpp"
 #include "friend.pb.h"
 #include "logger.hpp"
+#include "mq.hpp"
 #include "odb/database.hpp"
 #include "odb/entities.hpp"
 #include "etcd_client.hpp"
@@ -42,7 +43,7 @@ void fill_user_info(const User& u, UserInfo* info) {
 
 class FriendServiceImpl : public FriendService {
  public:
-  explicit FriendServiceImpl(odb::mysql::database* db) : db_(db) {}
+  FriendServiceImpl(odb::mysql::database* db, MqPublisher* mq) : db_(db), mq_(mq) {}
 
   // ---------------- 搜索用户（手机号精确 / 昵称模糊） ----------------
   void SearchUser(google::protobuf::RpcController* cntl, const SearchUserReq* req,
@@ -120,6 +121,17 @@ class FriendServiceImpl : public FriendService {
       return;
     }
     LOG_INFO("好友申请: {} -> {}", req->user_id(), req->peer_id());
+    // 实时推送：通知被申请人（离线则由其登录后拉待处理事件补齐）
+    if (mq_ != nullptr) {
+      FriendApplyInfo info;
+      info.set_apply_id(apply_id);
+      info.set_user_id(req->user_id());
+      info.set_peer_id(req->peer_id());
+      info.set_status(APPLY_STATUS_PENDING);
+      info.set_apply_note(req->apply_note());
+      info.set_create_time(now_seconds());
+      mq_->publish("friend.apply", info.SerializeAsString());
+    }
     resp->set_success(true);
     resp->set_errmsg("ok");
     resp->set_apply_id(apply_id);
@@ -320,7 +332,9 @@ class FriendServiceImpl : public FriendService {
         if (mid == req->user_id()) continue;
         if (!db_->query_one<User>(odb::query<User>::id == mid)) continue;  // 跳过不存在用户
         db_->persist(ChatSessionMember(uuid(), session_id, mid));
-        db_->persist(GroupEvent(uuid(), session_id, mid, req->user_id()));
+        std::string event_id = uuid();
+        db_->persist(GroupEvent(event_id, session_id, mid, req->user_id()));
+        pending_events_.push_back({event_id, mid});
       }
       t.commit();
     } catch (const std::exception& e) {
@@ -329,6 +343,18 @@ class FriendServiceImpl : public FriendService {
       resp->set_errmsg("建群失败");
       return;
     }
+    // 实时推送群事件给各被邀请人
+    if (mq_ != nullptr) {
+      for (const auto& ev : pending_events_) {
+        GroupEventInfo info;
+        info.set_event_id(ev.first);
+        info.set_group_session_id(session_id);
+        info.set_inviter_id(req->user_id());
+        info.set_create_time(now_seconds());
+        mq_->publish("group.event", info.SerializeAsString());
+      }
+    }
+    pending_events_.clear();
     LOG_INFO("建群成功: {} name={} creator={} members={}", session_id, req->group_name(),
              req->user_id(), req->member_ids_size());
     resp->set_success(true);
@@ -401,6 +427,8 @@ class FriendServiceImpl : public FriendService {
 
  private:
   odb::mysql::database* db_;
+  MqPublisher* mq_;
+  std::vector<std::pair<std::string, std::string>> pending_events_;  // (event_id, user_id)
 };
 
 }  // namespace
@@ -411,6 +439,10 @@ int main(int argc, char* argv[]) {
   LOG_INFO("{} 启动, 端口 {}", FLAGS_service_name, FLAGS_listen_port);
 
   auto db = create_db();
+  MqPublisher mq(FLAGS_rabbitmq_exchange);
+  if (!mq.connect()) {
+    LOG_WARN("MQ 连接失败（事件推送不可用，客户端可轮询待处理事件）");
+  }
 
   ServiceRegistry registry(FLAGS_etcd_endpoints, FLAGS_service_name, FLAGS_instance_id,
                            FLAGS_register_host, FLAGS_listen_port, FLAGS_etcd_lease_ttl,
@@ -421,7 +453,7 @@ int main(int argc, char* argv[]) {
   }
 
   brpc::Server server;
-  FriendServiceImpl impl(db.get());
+  FriendServiceImpl impl(db.get(), &mq);
   if (server.AddService(&impl, brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
     LOG_ERROR("AddService 失败");
     return 1;

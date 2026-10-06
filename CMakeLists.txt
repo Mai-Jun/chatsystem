@@ -14,6 +14,7 @@ add_subdirectory(server/user_server)  # M3
 add_subdirectory(server/gateway_server)  # M4
 add_subdirectory(server/friend_server)  # M5
 add_subdirectory(server/message_storage_server)  # M6
+add_subdirectory(server/message_server)  # M7
 
 enable_testing()
 add_subdirectory(test)

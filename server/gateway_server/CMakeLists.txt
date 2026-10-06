@@ -4,5 +4,9 @@ add_executable(gateway_server
   main.cc
   handlers_user.cc
   handlers_friend.cc
-  handlers_msg_file.cc)
-target_link_libraries(gateway_server PRIVATE im_common im_proto)
+  handlers_msg_file.cc
+  handlers_transmit.cc
+  ws_push.cc
+  mq_bridge.cc)
+# websocketpp(asio_no_tls) 需要 boost_system + pthread
+target_link_libraries(gateway_server PRIVATE im_common im_proto boost_system pthread)
