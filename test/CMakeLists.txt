@@ -15,4 +15,8 @@ target_link_libraries(common_tests PRIVATE
 add_executable(gateway_sim_client gateway_sim_client.cc)
 target_link_libraries(gateway_sim_client PRIVATE im_common im_proto gflags)
 
+# M5/M6/M7 端到端验收（好友/消息/搜索，服务器上运行）
+add_executable(e2e_friend_msg e2e_friend_msg.cc)
+target_link_libraries(e2e_friend_msg PRIVATE im_common im_proto gflags)
+
 add_test(NAME common_tests COMMAND common_tests)
