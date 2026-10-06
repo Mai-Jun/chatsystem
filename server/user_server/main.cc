@@ -29,6 +29,24 @@ using namespace im;  // NOLINT
 
 namespace {
 
+// 开发模式（未配置短信密钥）下接受的固定验证码，便于客户端/真机手工测试
+const char* kDevSmsCode = "666666";
+
+// 短信是否处于开发模式（未配置阿里云密钥）
+bool dev_sms_mode() {
+  return FLAGS_aliyun_sms_access_key_id.empty() || FLAGS_aliyun_sms_access_key_secret.empty();
+}
+
+// 验证码校验：Redis 实码恒有效；开发模式额外接受固定码
+bool sms_code_ok(const std::string& phone, const std::string& input,
+                 RedisClient* redis, std::string* errmsg) {
+  auto code = redis->get("sms:code:" + phone);
+  if (code && *code == input) return true;
+  if (dev_sms_mode() && input == kDevSmsCode) return true;
+  *errmsg = "验证码错误或已过期";
+  return false;
+}
+
 const char* kPasswordSalt = "im-system::v1::salt";
 const int kTokenTtlSeconds = 7 * 24 * 3600;
 
@@ -107,10 +125,10 @@ class UserServiceImpl : public UserService {
       resp->set_errmsg("手机号/昵称/密码不能为空");
       return;
     }
-    auto code = redis_->get("sms:code:" + req->phone());
-    if (!code || *code != req->sms_code()) {
+    std::string code_err;
+    if (!sms_code_ok(req->phone(), req->sms_code(), redis_, &code_err)) {
       resp->set_success(false);
-      resp->set_errmsg("验证码错误或已过期");
+      resp->set_errmsg(code_err);
       return;
     }
     try {
@@ -175,10 +193,10 @@ class UserServiceImpl : public UserService {
         return;
       }
     } else if (req->login_type() == LOGIN_BY_SMS) {
-      auto code = redis_->get("sms:code:" + req->phone());
-      if (!code || *code != req->sms_code()) {
+      std::string code_err;
+      if (!sms_code_ok(req->phone(), req->sms_code(), redis_, &code_err)) {
         resp->set_success(false);
-        resp->set_errmsg("验证码错误或已过期");
+        resp->set_errmsg(code_err);
         return;
       }
       redis_->del("sms:code:" + req->phone());
