@@ -3,6 +3,8 @@
 --instance_id=node1
 --listen_port=10006
 
-# 百度云 ASR 密钥（正式部署写入 conf/speech_server.local.flags，不入 git）
+# 百度云 ASR 密钥（正式部署写入 conf/speech_server.local.flags，不入 git；
+# 未配置时语音子服务走开发模式：返回占位转写，链路可验收）
 # --baidu_api_key=
 # --baidu_secret_key=
+# --baidu_dev_pid=1537

@@ -1,0 +1,12 @@
+# 复制为 conf/speech_server.local.flags（已被 .gitignore 忽略）并填入真实密钥，
+# 重启 speech_server 后从开发模式切换为真实识别。
+# 控制台: https://console.bce.baidu.com/ai/#!/ai/speech/app/list
+--baidu_api_key=你的ApiKey
+--baidu_secret_key=你的SecretKey
+
+# 短语音识别 dev_pid：
+#   1537  普通话（有标点，16k 采样率，默认）
+#   1737  英语
+#   1637  粤语
+#   1837  四川话
+# --baidu_dev_pid=1537

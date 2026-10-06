@@ -78,6 +78,9 @@ bool route_of(RequestType t, Route* out) {
     case REQ_TYPE_GET_BATCH_FILE:
       *out = {"file_server", true, false};
       return true;
+    case REQ_TYPE_SPEECH_RECOGNITION:
+      *out = {"speech_server", true, false};
+      return true;
     default:
       return false;
   }
@@ -107,7 +110,7 @@ int main(int argc, char* argv[]) {
 
   // 启动对各子服务的节点发现（漏掉会导致对应通道永远为空）
   for (const char* s : {"user_server", "friend_server", "message_storage_server", "file_server",
-                        "message_server"}) {
+                        "message_server", "speech_server"}) {
     channels.discover(s);
   }
 
@@ -185,6 +188,7 @@ int main(int argc, char* argv[]) {
                    gateway::dispatch_friend(ctx, &result) ||
                    gateway::dispatch_msg(ctx, &result) ||
                    gateway::dispatch_file(ctx, &result) ||
+                   gateway::dispatch_speech(ctx, &result) ||
                    gateway::dispatch_transmit(ctx, &result);
     if (!handled) {
       result.success = false;

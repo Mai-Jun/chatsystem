@@ -1,8 +1,9 @@
 #include "dispatch.hpp"
 #include "file.pb.h"
 #include "message_storage.pb.h"
+#include "speech.pb.h"
 
-// 消息存储 + 文件子服务分发（两个 pb.h 均较小，合并为一个 TU）
+// 消息存储 + 文件 + 语音分发（三个 pb.h 均较小，合并为一个 TU）
 namespace im {
 namespace gateway {
 
@@ -40,6 +41,17 @@ bool dispatch_file(const Ctx& ctx, Result* out) {
     case REQ_TYPE_GET_BATCH_FILE:
       forward<GetBatchReq, GetBatchResp, FileService_Stub>(
           ctx, &FileService_Stub::GetBatch, out);
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool dispatch_speech(const Ctx& ctx, Result* out) {
+  switch (ctx.type) {
+    case REQ_TYPE_SPEECH_RECOGNITION:
+      forward<SpeechRecognitionReq, SpeechRecognitionResp, SpeechService_Stub>(
+          ctx, &SpeechService_Stub::SpeechRecognition, out);
       return true;
     default:
       return false;

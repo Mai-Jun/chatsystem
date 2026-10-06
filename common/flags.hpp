@@ -50,6 +50,7 @@ DECLARE_string(storage_path);          // 文件存储根目录
 // 百度云 ASR（语音子服务）
 DECLARE_string(baidu_api_key);
 DECLARE_string(baidu_secret_key);
+DECLARE_int32(baidu_dev_pid);  // 1537=普通话有标点16k
 
 // 阿里云短信（用户子服务）
 DECLARE_string(aliyun_sms_access_key_id);

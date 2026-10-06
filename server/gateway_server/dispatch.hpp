@@ -40,6 +40,7 @@ bool dispatch_user(const Ctx& ctx, Result* out);      // user_server  (handlers_
 bool dispatch_friend(const Ctx& ctx, Result* out);    // friend_server (handlers_friend.cc)
 bool dispatch_msg(const Ctx& ctx, Result* out);       // message_storage_server
 bool dispatch_file(const Ctx& ctx, Result* out);      // file_server
+bool dispatch_speech(const Ctx& ctx, Result* out);    // speech_server (M8)
 bool dispatch_transmit(const Ctx& ctx, Result* out);  // message_server (handlers_transmit.cc)
 
 // 探测请求类型是否有 user_id 字段（注册/登录/验证码类请求没有）

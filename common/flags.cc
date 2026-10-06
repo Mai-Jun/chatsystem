@@ -38,6 +38,7 @@ DEFINE_string(storage_path, "./data/files", "文件存储根目录");
 
 DEFINE_string(baidu_api_key, "", "百度云 ASR API Key");
 DEFINE_string(baidu_secret_key, "", "百度云 ASR Secret Key");
+DEFINE_int32(baidu_dev_pid, 1537, "百度云短语音识别 dev_pid（1537=普通话有标点16k）");
 
 DEFINE_string(aliyun_sms_access_key_id, "", "阿里云短信 AccessKeyId");
 DEFINE_string(aliyun_sms_access_key_secret, "", "阿里云短信 AccessKeySecret");

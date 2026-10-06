@@ -1,17 +1,22 @@
-// M5/M6/M7 端到端验收（经网关）：
+// M5/M6/M7/M8 端到端验收（经网关）：
 //   双用户注册 → 搜索 → 好友申请 → 待处理事件 → 同意(建单聊会话) →
-//   好友列表/会话列表 → 发消息(转发+持久化) → 历史消息 → 关键字搜索
+//   好友列表/会话列表 → 发消息(转发+持久化) → 历史消息 → 关键字搜索 →
+//   建群/群事件/群消息 → 语音(上传wav→转发带ASR入库→网关直达识别)
 // 仅在服务器上运行（读取验证码需要访问 redis 容器）
+// M8 语音步骤要求 speech_server 在线（未配置百度密钥时走开发模式占位转写）
 #include <httplib.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <string>
 
+#include "file.pb.h"
 #include "friend.pb.h"
 #include "gateway.pb.h"
 #include "logger.hpp"
 #include "message_storage.pb.h"
 #include "message_transmit.pb.h"
+#include "speech.pb.h"
 #include "user.pb.h"
 #include "util.hpp"
 
@@ -103,6 +108,32 @@ std::string register_user(const std::string& phone, const std::string& nickname,
   }
   *out_token = login_resp.token();
   return reg_resp.user_id();
+}
+
+// 极简 WAV：44 字节标准头 + 1 秒 16kHz/16bit 单声道静音
+// （开发模式 ASR 不校验语音内容，真实密钥下需替换为真人语音）
+std::string make_wav() {
+  const uint32_t sample_rate = 16000;
+  const uint32_t data_len = sample_rate * 2 * 1;  // 16bit = 2 字节/样本
+  std::string w;
+  w.reserve(44 + data_len);
+  auto u32 = [&](uint32_t v) { w.append(reinterpret_cast<const char*>(&v), 4); };
+  auto u16 = [&](uint16_t v) { w.append(reinterpret_cast<const char*>(&v), 2); };
+  w += "RIFF";
+  u32(36 + data_len);
+  w += "WAVE";
+  w += "fmt ";
+  u32(16);            // fmt 块长度
+  u16(1);             // PCM
+  u16(1);             // 单声道
+  u32(sample_rate);   // 采样率
+  u32(sample_rate * 2);  // 字节率
+  u16(2);             // 块对齐
+  u16(16);            // 位深
+  w += "data";
+  u32(data_len);
+  w.append(data_len, '\0');
+  return w;
 }
 
 }  // namespace
@@ -255,6 +286,57 @@ int main() {
   bool gtx_ok = r_gtx.success() && gtx_resp.ParseFromString(r_gtx.body()) &&
                 !gtx_resp.new_message_id().empty();
   CHECK(gtx_ok, "群消息发送");
+
+  // ---- M8: 上传 wav 文件 ----
+  std::string wav_bytes = make_wav();
+  PutSingleReq wav_put;
+  wav_put.mutable_data()->set_file_name("e2e_voice.wav");
+  wav_put.mutable_data()->set_file_content(wav_bytes);
+  auto r_put = send(make_req(REQ_TYPE_PUT_SINGLE_FILE, token_a, wav_put));
+  PutSingleResp put_resp;
+  std::string wav_id;
+  if (r_put.success() && put_resp.ParseFromString(r_put.body())) wav_id = put_resp.file_id();
+  CHECK(!wav_id.empty(), "上传语音 wav 文件");
+
+  // ---- M8: 发语音消息（转发子服务顺带调 speech_server 做 ASR）----
+  MsgTransmitReq vtx_req;
+  vtx_req.set_chat_session_id(session_id);
+  vtx_req.mutable_content()->set_type(MESSAGE_TYPE_VOICE);
+  vtx_req.mutable_content()->set_file_id(wav_id);
+  auto r_vtx = send(make_req(REQ_TYPE_TRANSMIT_MESSAGE, token_a, vtx_req));
+  MsgTransmitResp vtx_resp;
+  std::string voice_msg_id;
+  if (r_vtx.success() && vtx_resp.ParseFromString(r_vtx.body())) {
+    voice_msg_id = vtx_resp.new_message_id();
+  }
+  CHECK(!voice_msg_id.empty(), "发送语音消息");
+
+  // ---- M8: 历史消息中该语音消息带 asr_text ----
+  GetHistoryReq vhist_req;
+  vhist_req.set_chat_session_id(session_id);
+  vhist_req.set_limit(10);
+  auto r_vhist = send(make_req(REQ_TYPE_GET_HISTORY, token_a, vhist_req));
+  GetHistoryResp vhist_resp;
+  bool asr_ok = false;
+  if (r_vhist.success() && vhist_resp.ParseFromString(r_vhist.body())) {
+    for (const auto& m : vhist_resp.messages()) {
+      if (m.message_id() == voice_msg_id && m.type() == MESSAGE_TYPE_VOICE &&
+          !m.asr_text().empty()) {
+        asr_ok = true;
+      }
+    }
+  }
+  CHECK(asr_ok, "语音消息转写入库（asr_text 有值）");
+
+  // ---- M8: 网关直达语音识别（REQ_TYPE_SPEECH_RECOGNITION）----
+  SpeechRecognitionReq sr_req;
+  sr_req.set_speech_content(wav_bytes);
+  sr_req.set_audio_format("wav");
+  auto r_sr = send(make_req(REQ_TYPE_SPEECH_RECOGNITION, token_a, sr_req));
+  SpeechRecognitionResp sr_resp;
+  bool sr_ok = r_sr.success() && sr_resp.ParseFromString(r_sr.body()) && sr_resp.success() &&
+               !sr_resp.recognized_text().empty();
+  CHECK(sr_ok, "语音识别接口（网关直达 speech_server）");
 
   printf("\n=== E2E 汇总: %d 项失败 ===\n", g_failures);
   return g_failures == 0 ? 0 : 1;
