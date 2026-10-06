@@ -171,17 +171,17 @@ class MsgStorageServiceImpl : public MsgStorageService {
     try {
       odb::transaction t(db_->begin());
       std::vector<Message> page;
+      // ODB 原生 SQL 片段用 + 拼接（&& 只接受查询表达式），且必须加括号保证优先级
       if (req->cursor_timestamp() > 0) {
-        // 取该时间戳之前的一页
-        auto rs = db_->query<Message>(
-            odb::query<Message>::session_id == req->chat_session_id() &&
-            odb::query<Message>::create_time < req->cursor_timestamp() &&
-            "ORDER BY create_time DESC LIMIT " + std::to_string(limit));
+        auto q = (odb::query<Message>::session_id == req->chat_session_id() &&
+                  odb::query<Message>::create_time < req->cursor_timestamp()) +
+                 "ORDER BY create_time DESC LIMIT " + std::to_string(limit);
+        auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) page.push_back(*it);
       } else {
-        auto rs = db_->query<Message>(
-            odb::query<Message>::session_id == req->chat_session_id() &&
-            "ORDER BY create_time DESC LIMIT " + std::to_string(limit));
+        auto q = (odb::query<Message>::session_id == req->chat_session_id()) +
+                 "ORDER BY create_time DESC LIMIT " + std::to_string(limit);
+        auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) page.push_back(*it);
       }
       // 统一按时间升序返回，便于客户端顺序渲染
@@ -256,15 +256,17 @@ class MsgStorageServiceImpl : public MsgStorageService {
       std::string cond = "%" + req->keyword() + "%";
       std::vector<Message> hits;
       if (req->chat_session_id().empty()) {
-        auto rs = db_->query<Message>(odb::query<Message>::content.like(cond) ||
-                                      odb::query<Message>::asr_text.like(cond) &&
-                                      "ORDER BY create_time ASC LIMIT 100");
+        auto q = (odb::query<Message>::content.like(cond) ||
+                  odb::query<Message>::asr_text.like(cond)) +
+                 "ORDER BY create_time ASC LIMIT 100";
+        auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) hits.push_back(*it);
       } else {
-        auto rs = db_->query<Message>(
-            (odb::query<Message>::content.like(cond) || odb::query<Message>::asr_text.like(cond)) &&
-            odb::query<Message>::session_id == req->chat_session_id() &&
-            "ORDER BY create_time ASC LIMIT 100");
+        auto q = ((odb::query<Message>::content.like(cond) ||
+                   odb::query<Message>::asr_text.like(cond)) &&
+                  odb::query<Message>::session_id == req->chat_session_id()) +
+                 "ORDER BY create_time ASC LIMIT 100";
+        auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) hits.push_back(*it);
       }
       for (const auto& m : hits) fill_message(m, resp->add_messages());
