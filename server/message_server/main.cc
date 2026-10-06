@@ -8,6 +8,7 @@
 #include "channel_manager.hpp"
 #include "entities-odb.hxx"
 #include "etcd_client.hpp"
+#include "file.pb.h"
 #include "flags.hpp"
 #include "logger.hpp"
 #include "message_storage.pb.h"
