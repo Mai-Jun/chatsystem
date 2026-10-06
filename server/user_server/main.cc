@@ -113,7 +113,7 @@ class UserServiceImpl : public UserService {
       resp->set_errmsg("验证码错误或已过期");
       return;
     }
-    {
+    try {
       odb::transaction t(db_->begin());
       if (db_->query_one<User>(odb::query<User>::phone == req->phone())) {
         t.commit();
@@ -122,6 +122,11 @@ class UserServiceImpl : public UserService {
         return;
       }
       t.commit();
+    } catch (const std::exception& e) {
+      LOG_ERROR("注册查重失败: {}", e.what());
+      resp->set_success(false);
+      resp->set_errmsg("注册失败（数据库异常）");
+      return;
     }
     std::string uid = uuid();
     try {
