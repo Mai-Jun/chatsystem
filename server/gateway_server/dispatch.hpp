@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <type_traits>
 
 #include <brpc/channel.h>
 #include <brpc/controller.h>
@@ -41,7 +42,14 @@ bool dispatch_msg(const Ctx& ctx, Result* out);       // message_storage_server
 bool dispatch_file(const Ctx& ctx, Result* out);      // file_server
 bool dispatch_transmit(const Ctx& ctx, Result* out);  // message_server (handlers_transmit.cc)
 
-// 通用转发：解析 body → (可选)注入 user_id → 调子服务 → 填充 result
+// 探测请求类型是否有 user_id 字段（注册/登录/验证码类请求没有）
+template <typename T, typename = void>
+struct has_user_id : std::false_type {};
+template <typename T>
+struct has_user_id<T, std::void_t<decltype(std::declval<T&>().set_user_id(std::string()))>>
+    : std::true_type {};
+
+// 通用转发：解析 body → (若有 user_id 字段则注入) → 调子服务 → 填充 result
 template <typename ReqT, typename RespT, typename StubT, typename MethodT>
 void forward(const Ctx& ctx, MethodT method, Result* out) {
   ReqT req;
@@ -50,8 +58,10 @@ void forward(const Ctx& ctx, MethodT method, Result* out) {
     out->errmsg = "body 解析失败";
     return;
   }
-  if (ctx.user_id != nullptr && !ctx.user_id->empty()) {
-    req.set_user_id(*ctx.user_id);  // 以服务端鉴权结果为准，防客户端伪造
+  if constexpr (has_user_id<ReqT>::value) {
+    if (ctx.user_id != nullptr && !ctx.user_id->empty()) {
+      req.set_user_id(*ctx.user_id);  // 以服务端鉴权结果为准，防客户端伪造
+    }
   }
   StubT stub(ctx.channel);
   brpc::Controller cntl;
