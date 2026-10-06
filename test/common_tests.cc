@@ -191,7 +191,7 @@ TEST(OdbTest, UserCrud) {
   }
   {
     odb::transaction t(db->begin());
-    auto u = db->query_one<User>(odb::query<User>::phone == "19900000000");
+    std::unique_ptr<User> u(db->query_one<User>(odb::query<User>::phone == "19900000000"));
     ASSERT_TRUE(u);
     EXPECT_EQ(u->id(), uid);
     EXPECT_EQ(u->nickname(), "测试用户");
@@ -199,7 +199,7 @@ TEST(OdbTest, UserCrud) {
   }
   {
     odb::transaction t(db->begin());
-    auto u = db->query_one<User>(odb::query<User>::phone == "19900000000");
+    std::unique_ptr<User> u(db->query_one<User>(odb::query<User>::phone == "19900000000"));
     ASSERT_TRUE(u);
     u->nickname("测试用户改");
     u->touch();
@@ -220,7 +220,7 @@ TEST(OdbTest, UserCrud) {
   }
   {
     odb::transaction t(db->begin());
-    EXPECT_FALSE(db->query_one<User>(odb::query<User>::id == uid));
+    std::unique_ptr<User> gone(db->query_one<User>(odb::query<User>::id == uid)); EXPECT_FALSE(gone);
     t.commit();
   }
 }

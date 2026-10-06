@@ -150,7 +150,7 @@ class UserServiceImpl : public UserService {
     std::unique_ptr<User> user;
     try {
       odb::transaction t(db_->begin());
-      user = db_->query_one<User>(odb::query<User>::phone == req->phone());
+      user.reset(db_->query_one<User>(odb::query<User>::phone == req->phone()));
       t.commit();
     } catch (const std::exception& e) {
       LOG_ERROR("登录查询失败: {}", e.what());
@@ -238,7 +238,7 @@ class UserServiceImpl : public UserService {
     (void)cntl;
     try {
       odb::transaction t(db_->begin());
-      auto u = db_->query_one<User>(odb::query<User>::id == req->user_id());
+      std::unique_ptr<User> u(db_->query_one<User>(odb::query<User>::id == req->user_id()));
       if (!u) {
         t.commit();
         resp->set_success(false);
@@ -299,7 +299,7 @@ class UserServiceImpl : public UserService {
     }
     try {
       odb::transaction t(db_->begin());
-      auto u = db_->query_one<User>(odb::query<User>::id == req->user_id());
+      std::unique_ptr<User> u(db_->query_one<User>(odb::query<User>::id == req->user_id()));
       if (!u) {
         t.commit();
         resp->set_success(false);
