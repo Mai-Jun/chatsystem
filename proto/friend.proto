@@ -24,6 +24,7 @@ message GroupEventInfo {
   string group_session_id = 2;
   string inviter_id       = 3;
   int64  create_time      = 4;
+  string user_id          = 5; // 被邀请人（实时推送的目标用户）
 }
 
 // ---- 用户搜索（手机号精确 / 用户 id）----

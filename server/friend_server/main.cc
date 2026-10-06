@@ -296,6 +296,7 @@ class FriendServiceImpl : public FriendService {
         e->set_event_id(it->id());
         e->set_group_session_id(it->session_id());
         e->set_inviter_id(it->inviter_id());
+        e->set_user_id(it->user_id());
         e->set_create_time(it->create_time());
         GroupEvent upd = *it;
         upd.status(1);
@@ -351,6 +352,7 @@ class FriendServiceImpl : public FriendService {
         info.set_event_id(ev.first);
         info.set_group_session_id(session_id);
         info.set_inviter_id(req->user_id());
+        info.set_user_id(ev.second);  // 推送目标：被邀请人
         info.set_create_time(now_seconds());
         mq_->publish("group.event", info.SerializeAsString());
       }
