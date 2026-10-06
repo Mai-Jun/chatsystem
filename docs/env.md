@@ -70,3 +70,5 @@
 - WSL/VBox 在旧 Windows 上不可用的完整经过见 migration.md
 - **pkill -x 匹配不到超 15 字符进程名**（Linux comm 截断）：`message_storage_server` 的 comm 是 `message_storage`，`pkill -x` 漏杀 → 旧进程占端口、新实例 "Fail to listen"（M8 事故）。停服务一律 `pkill -f "build/server/<服务名>/"`。
 - **httplib 开 OpenSSL 必须全局统一**：根 CMakeLists `add_compile_definitions(CPPHTTPLIB_OPENSSL_SUPPORT)`（M8 百度 ASR 走 HTTPS）；只给单个 TU 定义会与其他包含 httplib 的 TU 构成 ODR 违规。
+- **无头服务器装 Qt6 缺 GL 头**：qt6-base-dev/libqt6websockets6-dev 装完 find_package(Qt6) 仍报 "Failed to find Qt component Widgets"（配置文件其实在，是 Qt6Gui 的 OpenGL 依赖挂了）——必须补 `libgl1-mesa-dev libegl-dev`（M9 已装齐）。
+- Qt 客户端编译用 `-DCMAKE_PREFIX_PATH=/usr/local`：否则 FindProtobuf 会抓到 apt 的 protobuf 3.12.4 头与 /usr/local 的 3.20.2 库混搭（与 brpc 同源问题）。
