@@ -12,6 +12,7 @@
 #include <string>
 
 #include "protocol/gateway_client.hpp"
+#include "friend.pb.h"
 #include "user.pb.h"
 
 using namespace im;  // NOLINT
