@@ -47,7 +47,7 @@ LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
   layout->addLayout(addr_row);
   connect(addr_edit, &QLineEdit::editingFinished, this, [this, addr_edit, port_edit, &settings]() {
     settings.setValue("server/host", addr_edit->text());
-    settings.setValue("server/port", port_edit->toInt());
+    settings.setValue("server/port", port_edit->text().toInt());
   });
 }
 
@@ -193,7 +193,7 @@ void LoginWindow::do_register() {
 void LoginWindow::after_login(const QString& token, const im::UserInfo& user) {
   client_->set_token(token);
   QSettings settings("im-system", "im-client");
-  settings.setValue("account/phone", user.phone());
+  settings.setValue("account/phone", QString::fromStdString(user.phone()));
   emit loginSucceeded(token, user);
   accept();  // 关闭登录窗
 }
