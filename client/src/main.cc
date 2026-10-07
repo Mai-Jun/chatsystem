@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
   QApplication app(argc, argv);
   QApplication::setOrganizationName(QStringLiteral("im-system"));
   QApplication::setApplicationName(QStringLiteral("im-client"));
-  QApplication::setStyleSheet(QString::fromUtf8(kAppStyleSheet));  // 微信风格全局主题
+  app.setStyleSheet(QString::fromUtf8(kAppStyleSheet));  // 微信风格全局主题
 
   QSettings settings;
   const QString host = settings.value("server/host", QStringLiteral("47.112.192.119")).toString();

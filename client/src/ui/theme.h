@@ -80,6 +80,5 @@ QFrame#bubblePeer { background: #FFFFFF; border-radius: 6px; }
 /* ---------- 卡片 ---------- */
 QFrame#card { background: #FFFFFF; border-radius: 8px; border: 1px solid #E7E7E7; }
 )";
-}
 
 }  // namespace im
