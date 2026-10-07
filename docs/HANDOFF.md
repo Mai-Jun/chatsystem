@@ -4,7 +4,7 @@
 
 ## 一、30 秒了解现状
 
-**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**，服务器上 7 个子服务正在运行。**M9 Qt 客户端已完成并验证（2026-10-07 三轮迭代）**：文本/图片/文件/语音四类消息、未读计数、历史分页、头像、账号密码+验证码双登录、微信风格界面全部就绪；协议冒烟 8/8、双客户端 40/40、无头 GUI 截图逐项验证。**Windows 客户端已构建（MSYS2+Qt 6.11）并通过公网冒烟，已交付用户手工测试**。剩余：真机手测收尾（进行中）→ 录音真机验证 → **M10 部署固化**（含 ES 上服务器）。
+**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**，服务器上 7 个子服务正在运行。**M9 Qt 客户端已完成并验证（2026-10-07 四轮迭代）**：文本/图片/文件/语音四类消息、未读计数、历史分页、头像、账号密码+验证码双登录、微信风格界面全部就绪；第四轮落实用户反馈：退出登录回到登录/注册页（不再退出程序）、登录页预填手机号、项目根目录快捷方式 `IM即时通讯.lnk` 双击即用、修复部署不自包含（0xC0000135 坑 19）。协议冒烟 8/8、双客户端 40/40、无头 GUI 截图逐项验证；Windows 客户端已重建并经 UIA 实机验证（自动登录→退出→登录页→重登→推送已连接 全链路）。剩余：真机手测收尾（进行中）→ 录音真机验证 → **M10 部署固化**（含 ES 上服务器）。
 
 剩余：**M9 Qt 桌面客户端（剩余部分）→ M10 部署固化**（含 ES 上服务器）。
 
@@ -108,10 +108,26 @@
   子树背景一律用 objectName 规则 + `Qt::WA_StyledBackground`，禁用 inline 样式表
 - Windows 侧已重建同版（MSYS2），GUI 脚本坐标已按新布局重标定（登录窗 420x470、聊天窗 640x700）
 
-**待办（M9 收尾，2026-10-07 第三轮后）**：
-- **用户真机手测（进行中）**：Windows 客户端已交付（双击 `client\cmake-build-win\im_client.exe`，
-  登录页预填 47.112.192.119:9000）。用户已提两轮反馈（登录方式、界面美化），均已落实，
-  等下一轮反馈。测试账号：端A `19353589846`/pass123、端B `18353589846`/pass123（两者有
+**已完成（第四轮 2026-10-07，用户反馈驱动：退出登录行为 + 启动便利性）**：
+- **退出登录改为回到登录/注册页（不退出进程）**：MainWindow 新增 `logoutRequested` 信号，
+  main.cc 抽出 `show_login_window()/open_main_window()` 两函数互相切换（登录窗/主窗口均
+  WA_DeleteOnClose 循环重建）；登出时发 LOGOUT RPC + `disconnect_push()`（并停重连定时器）+
+  清内存 token + 删 QSettings `account/token`（下次启动不再自动登录）+ deleteLater 全部聊天窗。
+  登录页预填上次登录手机号（QSettings `account/phone`）
+- **UIA 实机验证全链路通过**（PowerShell UIAutomation 驱动，Qt 控件名可被识别）：
+  自动登录进主窗 → 点「退出登录」→ 登录页出现（同进程）→ 重新登录 → 主窗出现且状态栏
+  「推送: 已连接」（disconnect/reconnect 正确）
+- **项目根目录新增快捷方式 `IM即时通讯.lnk`** → `client\cmake-build-win\im_client.exe`
+  （工作目录设为 exe 所在目录；.lnk 属本机产物已加 .gitignore `*.lnk`）
+- **服务器地址确认已内置，无需命令行参数**：main.cc/login_window.cc 默认
+  47.112.192.119:9000（WS 9001 硬编码），登录页地址栏可改并持久化；需要参数的只是
+  client_smoke/dual_client_push 等控制台测试工具
+- **修复部署不自包含（坑 19）**：新增 `client/fix_runtime_dlls.sh`（ASCII-only），重建后必须跑
+
+**待办（M9 收尾，2026-10-07 第四轮后）**：
+- **用户真机手测（进行中）**：Windows 客户端已交付（双击项目根目录 `IM即时通讯.lnk`）。
+  用户已提三轮反馈（登录方式、界面美化、退出登录行为/启动便利性），均已落实，等下一轮反馈。
+  测试账号：端A `19353589846`/pass123、端B `18353589846`/pass123（两者有
   68 条含四类消息的会话）；造数据：`dual_client_push --send-many <对端> <自己> 20 "demo"`
 - **录音真机验证**：QtMultimedia 录音链路已实现（WavRecorder→16k/单声道/16bit WAV→上传→
   服务端 ASR），无头服务器无麦克风只能验证编译与协议层（合成 WAV 已验通），用户点「录音」
@@ -169,8 +185,11 @@ bash /root/gui_test.sh.c 1      # 阶段 1~16：启动/登录/会话/发消息/�
 # —— Windows 客户端（MSYS2，本机 cmd；GUI 界面迭代时在本机构建验证）——
 # 首次配置（已完成）：cmake -S client -B client/cmake-build-win -G Ninja
 #   -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DCMAKE_PREFIX_PATH=/mingw64
-set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/Mai/.zcode/workspace/default/im-system && cmake --build client/cmake-build-win && /mingw64/bin/windeployqt.exe --release client/cmake-build-win/im_client.exe"
-# 运行：双击 client\cmake-build-win\im_client.exe（自包含，已过公网冒烟）
+set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/Mai/.zcode/workspace/default/im-system && cmake --build client/cmake-build-win && /mingw64/bin/windeployqt.exe --release client/cmake-build-win/im_client.exe && bash client/fix_runtime_dlls.sh"
+# fix_runtime_dlls.sh 必跑：windeployqt 不复制编译器运行时与 protobuf/abseil DLL（坑 19），
+# 脚本幂等，扫 exe+全部 DLL 的导入闭包从 /mingw64/bin 补齐到 exe 目录
+# 运行：双击项目根目录 IM即时通讯.lnk（或 client\cmake-build-win\im_client.exe，已自包含）
+# 服务器地址内置 47.112.192.119:9000，im_client.exe 不需要任何命令行参数
 # 注意：MSYS2 protobuf 36 需 CONFIG 模式 + 自查 protoc（CMakeLists 已适配，详见 env.md）
 
 # —— 验证 ——
@@ -204,6 +223,8 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 16. 客户端 token 持久化在 `~/.config/im-system/im-client.conf`（QSettings），启动时 GET_USER_INFO 校验通过则跳过登录页——自动化测试想回到登录页要先删该文件。Windows 侧同机制，文件在 `%APPDATA%\im-system\im-client.conf`。
 17. **Qt 控件级 inline 样式表会「吃掉」全局 QSS 的 objectName 规则**：`widget->setStyleSheet("background:#FFF")` 这类无选择器规则作用于该 widget 及**全部子孙**，且优先级高于 app 级 QSS——曾把 `#primary` 绿色主按钮盖成白底白字「隐身」（现象：按钮位置空白但点击有效）。子树背景一律用 objectName 规则（`QWidget#inputPanel{...}`）+ `setAttribute(Qt::WA_StyledBackground)`，禁用 inline 样式表。
 18. **GUI 界面验证工作流**：服务器 Xvfb 截图初检 → 发现疑点用「裁图放大 + 点击实验」定位（例：按钮看不见时，往输入框打字点空白槽位，消息上屏即证明按钮存在只是没画出来）→ 修复后**必须重启客户端再截图**（ChatWindow 关闭只是 hide，旧进程截图会误导）。每次改 UI 后窗口尺寸/控件位置会变，gui_test.sh 的偏移量要按截图重标定。
+19. **windeployqt 产物不自包含**：它不复制编译器运行时（libgcc_s_seh-1/libstdc++-6/libwinpthread-1）和 protobuf/abseil 系 DLL（exe 直接导入，只有 exe 依赖它们），且二次运行因「已是最新」全部跳过。症状：双击报「找不到 xxx.dll」或静默退出（退出码 0xC0000135）。此前"可直接双击"是因启动环境 PATH 恰好含 MSYS2，换环境即挂。补齐脚本 `client/fix_runtime_dlls.sh`（ASCII-only）：扫 exe+全部 DLL 的导入表，从 /mingw64/bin 递归补齐到 exe 目录直到收敛；结果里 UNRESOLVED 的 `api-ms-win-*` 是系统虚拟 API 集，属正常。
+20. **PowerShell UIAutomation 可驱动 Qt 客户端做 Windows 实机 GUI 验证**：Qt 控件名（如「退出登录」按钮）可被 UIA 识别，按钮 InvokePattern.Invoke、输入框 ValuePattern.SetValue，无需坐标点击；配合截图可全自动走「登录→退出→重登」链路。注意：通过 -Command 传中文串安全（命令行是 UTF-16），但 .ps1 文件内容必须 ASCII-only（同坑 12）。
 
 ## 八、会话内决策记录（增量）
 
@@ -225,3 +246,4 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 - M9 第三轮决策（2026-10-07，用户反馈驱动）：①登录改「账号密码主入口 + 验证码登录 + 注册」三标签（服务端零改动，协议本就双方式）；②界面微信风格：全局 QSS 主题（theme.h）+ 聊天窗从 QTextBrowser/HTML 改为 **QListWidget+setItemWidget 真实控件行**（气泡=QLabel/QFrame + objectName 样式，头像=avatar.h 首字生成，图片异步下载后 rebuild_row 就地替换）。
 - M9 第三轮：消息行渲染改控件后，历史分页的「视口保持」改在 QListWidget 上实现（prepend 时记录 scrollbar value/maximum，插行后按增量补偿）；贴底滚动用 QTimer::singleShot(0) 等 sizeHint 落定。
 - M9 第三轮：Windows 交付链路固定为「cmake --build → windeployqt --release」两步，产物自包含可直接双击；用户反馈迭代时在 Windows 侧直接重建，服务器侧仅作协议回归（client_smoke + dual_client_push）。
+- M9 第四轮决策（2026-10-07，用户反馈驱动）：①退出登录**不退出进程**，改为登录页/主窗口两函数互相切换、窗口均 WA_DeleteOnClose 循环重建（重新登录可能是另一个账号，主窗/聊天窗状态必须全新）；登出即 disconnect_push + 删本地 token，重登后 connect_push 以新 token 重新鉴权。②部署链路固定为「cmake --build → windeployqt → fix_runtime_dlls.sh」三步（windeployqt 不复制运行时依赖，见坑 19）。③服务器地址视为内置配置（默认 47.112.192.119:9000，登录页可改持久化），客户端不提供命令行参数入口。
