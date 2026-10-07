@@ -106,9 +106,11 @@ ChatWindow::ChatWindow(GatewayClient* client, const QString& session_id,
   view_->setUniformItemSizes(false);
   v->addWidget(view_, 1);
 
-  // 底部输入区
+  // 底部输入区（注意：不要用 widget 级 inline 样式表——无选择器规则会下压到子控件，
+  // 把 #primary 按钮的绿底盖成白底白字；统一走全局 QSS 的 objectName 规则）
   auto* input_panel = new QWidget(this);
-  input_panel->setStyleSheet(QStringLiteral("background:#FFFFFF;"));
+  input_panel->setObjectName(QStringLiteral("inputPanel"));
+  input_panel->setAttribute(Qt::WA_StyledBackground, true);
   auto* iv = new QVBoxLayout(input_panel);
   iv->setContentsMargins(12, 8, 12, 10);
   iv->setSpacing(6);
@@ -238,7 +240,8 @@ void ChatWindow::load_history(int64_t cursor) {
         if (prepend) {
           bar->setValue(old_value + (bar->maximum() - old_max));  // 视口停在原消息
         } else {
-          view_->scrollToBottom();
+          // 延迟一拍滚动：等 sizeHint 在事件循环里落定
+          QTimer::singleShot(0, view_, [this]() { view_->scrollToBottom(); });
         }
       });
 }
@@ -263,7 +266,7 @@ void ChatWindow::on_push_message(const im::MessageInfo& msg) {
   if (rows_.contains(mid)) return;  // 广播回来的自己的消息/重复推送
   messages_.append(msg);
   insert_row(msg, view_->count());
-  view_->scrollToBottom();
+  QTimer::singleShot(0, view_, [this]() { view_->scrollToBottom(); });
 }
 
 QString ChatWindow::sender_display_name(const im::MessageInfo& msg) const {
@@ -437,11 +440,14 @@ void ChatWindow::rebuild_row(const QString& message_id) {
   QListWidgetItem* item = it.value();
   const im::MessageInfo* msg = find_message(message_id);
   if (msg == nullptr) return;
-  // takeItemWidget 会被 setItemWidget 内部清理，这里直接换新
+  // 原本停在底部的话，行高变化后继续贴底（图片加载完成等场景）
+  auto* bar = view_->verticalScrollBar();
+  const bool at_bottom = bar->value() >= bar->maximum() - 8;
   QWidget* w = build_row(*msg);
   view_->removeItemWidget(item);
   view_->setItemWidget(item, w);
   item->setSizeHint(w->sizeHint());
+  if (at_bottom) QTimer::singleShot(0, view_, [this]() { view_->scrollToBottom(); });
 }
 
 void ChatWindow::ensure_image(const QString& file_id) {
