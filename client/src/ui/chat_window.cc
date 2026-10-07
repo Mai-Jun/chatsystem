@@ -474,7 +474,7 @@ void ChatWindow::transmit(im::MessageType type, const QString& content, const QS
 void ChatWindow::toggle_record() {
   if (recorder_->recording()) {
     int duration = 0;
-    const QByteArray wav = recorder_->stop(duration);
+    const QByteArray wav = recorder_->stop(&duration);
     record_tick_->stop();
     voice_btn_->setText(QStringLiteral("录音"));
     if (wav.isEmpty()) {

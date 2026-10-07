@@ -11,6 +11,7 @@
 #include <QTimer>
 
 #include <cstdio>
+#include <cmath>
 #include <functional>
 #include <string>
 #include <vector>
@@ -127,8 +128,91 @@ struct PushLog {
     }
     return false;
   }
+  // 按 file_id 找一条推送（图片/文件/语音消息 content 为空，用 file_id 匹配）
+  bool find_by_file_id(const std::string& file_id, MessageInfo* out) {
+    for (const auto& f : frames) {
+      if (f.first != PUSH_TYPE_NEW_MESSAGE) continue;
+      MessageInfo msg;
+      if (!msg.ParseFromArray(f.second.constData(), f.second.size())) continue;
+      if (msg.file_id() == file_id) {
+        if (out) *out = msg;
+        return true;
+      }
+    }
+    return false;
+  }
   void clear() { frames.clear(); }
 };
+
+// 上传/下载的同步封装（协议层是回调风格）
+bool upload_sync(GatewayClient& c, const QString& name, const QByteArray& data, QString* file_id,
+                 QString* err) {
+  QEventLoop loop;
+  bool ok = false;
+  QString fid;
+  c.upload_file(name, data, [&](bool o, const QString& e, const QString& f) {
+    ok = o;
+    fid = f;
+    if (err) *err = e;
+    loop.quit();
+  });
+  loop.exec();
+  if (file_id) *file_id = fid;
+  return ok;
+}
+
+bool download_sync(GatewayClient& c, const QString& file_id, QByteArray* out, QString* err) {
+  QEventLoop loop;
+  bool ok = false;
+  QByteArray data;
+  c.download_file(file_id, [&](bool o, const QString& e, const QByteArray& d, const QString&) {
+    ok = o;
+    data = d;
+    if (err) *err = e;
+    loop.quit();
+  });
+  loop.exec();
+  if (out) *out = data;
+  return ok;
+}
+
+// 造一段 16kHz/单声道/16bit PCM WAV（与客户端 WavRecorder 产物同规格）
+QByteArray make_test_wav(int ms) {
+  const int rate = 16000;
+  const int samples = rate * ms / 1000;
+  QByteArray pcm;
+  pcm.reserve(samples * 2);
+  for (int i = 0; i < samples; ++i) {
+    const qint16 v = static_cast<qint16>(3000 * std::sin(2 * 3.14159265 * 440 * i / rate));
+    pcm.append(static_cast<char>(v & 0xff));
+    pcm.append(static_cast<char>((v >> 8) & 0xff));
+  }
+  QByteArray wav("RIFF", 4);
+  auto u32 = [&wav](quint32 v) {
+    wav.append(static_cast<char>(v & 0xff));
+    wav.append(static_cast<char>((v >> 8) & 0xff));
+    wav.append(static_cast<char>((v >> 16) & 0xff));
+    wav.append(static_cast<char>((v >> 24) & 0xff));
+  };
+  auto u16 = [&wav](quint16 v) {
+    wav.append(static_cast<char>(v & 0xff));
+    wav.append(static_cast<char>((v >> 8) & 0xff));
+  };
+  u32(36 + pcm.size());
+  wav.append("WAVE", 4);
+  wav.append("fmt ", 4);
+  u32(16);
+  u16(1);
+  u16(1);
+  u32(rate);
+  u32(rate * 2);
+  u16(2);
+  u16(16);
+  wav.append("data", 4);
+  u32(pcm.size());
+  wav.append(pcm);
+  return wav;
+}
 
 }  // namespace
 
@@ -281,6 +365,83 @@ int main(int argc, char* argv[]) {
     }
     check(ok && found, "B 重连后拉历史补齐离线消息");
     check(resp.messages_size() >= 2, "历史含两条消息");
+  }
+
+  // ---- ⑦ 文件/图片消息链路：上传 → 发送 → 推送 → 对端下载字节一致 ----
+  log_b.clear();
+  {
+    QByteArray payload;
+    payload.reserve(4096);
+    for (int i = 0; i < 4096; ++i) payload.append(static_cast<char>(i % 251));  // 含 0 字节
+
+    QString file_id;
+    check(upload_sync(client_a, QStringLiteral("m9_payload.bin"), payload, &file_id, &err) &&
+              !file_id.isEmpty(),
+          "A 上传文件拿到 file_id");
+
+    MsgTransmitReq req;
+    req.set_chat_session_id(session_id);
+    req.mutable_content()->set_type(MESSAGE_TYPE_FILE);
+    req.mutable_content()->set_file_id(file_id.toStdString());
+    req.mutable_content()->set_file_name("m9_payload.bin");
+    req.mutable_content()->set_file_size(payload.size());
+    MsgTransmitResp resp;
+    check(sync_call(client_a, REQ_TYPE_TRANSMIT_MESSAGE, req, &resp, &err) && resp.success(),
+          "A 发送文件消息");
+
+    MessageInfo got;
+    check(wait_for([&]() { return log_b.find_by_file_id(file_id.toStdString(), &got); }, 10000),
+          "B 实时收到文件消息推送");
+    check(got.type() == MESSAGE_TYPE_FILE && got.file_name() == "m9_payload.bin" &&
+              got.file_size() == payload.size(),
+          "文件消息元信息一致（type/文件名/大小）");
+
+    QByteArray back;
+    check(download_sync(client_b, file_id, &back, &err), "B 下载文件");
+    check(back == payload, "B 下载内容与上传字节完全一致");
+  }
+
+  // ---- ⑧ 语音消息链路：WAV 上传 → 发送 → 服务端 ASR → 推送带 asr_text ----
+  log_b.clear();
+  {
+    const QByteArray wav = make_test_wav(1200);  // 1.2s 440Hz
+    QString file_id;
+    check(upload_sync(client_a, QStringLiteral("voice_m9.wav"), wav, &file_id, &err) &&
+              !file_id.isEmpty(),
+          "A 上传语音 WAV");
+
+    MsgTransmitReq req;
+    req.set_chat_session_id(session_id);
+    req.mutable_content()->set_type(MESSAGE_TYPE_VOICE);
+    req.mutable_content()->set_file_id(file_id.toStdString());
+    req.mutable_content()->set_file_name("voice_m9.wav");
+    req.mutable_content()->set_file_size(wav.size());
+    MsgTransmitResp resp;
+    check(sync_call(client_a, REQ_TYPE_TRANSMIT_MESSAGE, req, &resp, &err) && resp.success(),
+          "A 发送语音消息");
+
+    MessageInfo got;
+    check(wait_for([&]() { return log_b.find_by_file_id(file_id.toStdString(), &got); }, 10000),
+          "B 实时收到语音消息推送");
+    check(got.type() == MESSAGE_TYPE_VOICE, "语音消息类型正确");
+    check(!got.asr_text().empty(), "语音消息带 ASR 转写文本（开发模式占位）");
+    if (!got.asr_text().empty()) printf("      asr_text = %s\n", got.asr_text().c_str());
+
+    QByteArray back;
+    check(download_sync(client_b, file_id, &back, &err) && back == wav,
+          "B 下载语音内容与上传一致");
+  }
+
+  // ---- ⑨ 会话历史应包含 4 条消息（2 文本 + 1 文件 + 1 语音）----
+  {
+    GetHistoryReq req;
+    req.set_chat_session_id(session_id);
+    req.set_cursor_timestamp(0);
+    req.set_limit(50);
+    GetHistoryResp resp;
+    bool ok = sync_call(client_b, REQ_TYPE_GET_HISTORY, req, &resp, &err) && resp.success();
+    check(ok && resp.messages_size() == 4,
+          QString("历史消息数 = 4（实际 %1）").arg(resp.messages_size()).toStdString());
   }
 
   printf("\n=== 双客户端推送验证: %d 项失败 ===\n", g_failures);
