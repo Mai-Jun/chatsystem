@@ -101,6 +101,20 @@ int main(int argc, char* argv[]) {
   }
   client.set_token(QString::fromStdString(login_resp.token()));
 
+  // ---- 短信验证码登录（开发模式固定码；第二种登录方式）----
+  SendSmsCodeReq sms2;
+  sms2.set_phone(phone);
+  SendSmsCodeResp sms2_resp;
+  check(sync_call(client, REQ_TYPE_SEND_SMS_CODE, sms2, &sms2_resp, &err), "登录页发送验证码");
+  UserLoginReq sms_login;
+  sms_login.set_phone(phone);
+  sms_login.set_login_type(LOGIN_BY_SMS);
+  sms_login.set_sms_code("666666");
+  UserLoginResp sms_login_resp;
+  check(sync_call(client, REQ_TYPE_LOGIN, sms_login, &sms_login_resp, &err) &&
+            sms_login_resp.success() && !sms_login_resp.token().empty(),
+        "短信验证码登录（固定码 666666）");
+
   // ---- 用户信息（token 鉴权链路）----
   GetUserInfoReq info_req;
   GetUserInfoResp info_resp;

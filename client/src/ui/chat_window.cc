@@ -7,17 +7,18 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QMediaPlayer>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QStringLiteral>
-#include <QTextBrowser>
-#include <QTextDocument>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -28,23 +29,19 @@
 #include "message_storage.pb.h"
 #include "message_transmit.pb.h"
 #include "protocol/gateway_client.hpp"
+#include "ui/avatar.h"
 
 namespace im {
 
 namespace {
 
 constexpr int kPageSize = 50;
-constexpr int kMinVoiceMs = 500;   // 短于该时长视为误触，不上传
-constexpr int kMaxVoiceMs = 60000;  // 上限 60s，到点自动停止
-constexpr int kImageWidth = 220;
-
-QString escape_html(const QString& s) {
-  QString r = s;
-  r.replace(QLatin1Char('&'), QStringLiteral("&amp;"));
-  r.replace(QLatin1Char('<'), QStringLiteral("&lt;"));
-  r.replace(QLatin1Char('>'), QStringLiteral("&gt;"));
-  return r;
-}
+constexpr int kMinVoiceMs = 500;     // 短于该时长视为误触，不上传
+constexpr int kMaxVoiceMs = 60000;   // 上限 60s，到点自动停止
+constexpr int kImageMax = 220;       // 图片气泡最长边
+constexpr int kTextMaxWidth = 320;   // 文本气泡换行宽度
+constexpr int kBubblePadX = 24;      // 气泡左右内边距（与 QSS 一致的估算值）
+constexpr int kBubblePadY = 16;
 
 QString format_time(int64_t seconds) {
   return QDateTime::fromSecsSinceEpoch(seconds).toString(QStringLiteral("MM-dd hh:mm"));
@@ -60,6 +57,14 @@ QString format_ms(int ms) {
   return QString("%1:%2").arg(ms / 60000).arg((ms / 1000) % 60, 2, 10, QLatin1Char('0'));
 }
 
+// 文本气泡的固定尺寸：按换行排版算出紧贴内容的宽高（短消息不撑满整行）
+QSize text_bubble_size(const QString& text) {
+  QFontMetrics fm = QLabel().fontMetrics();
+  const QRect r = fm.boundingRect(QRect(0, 0, kTextMaxWidth, 10000),
+                                  Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop, text);
+  return QSize(r.width() + kBubblePadX, r.height() + kBubblePadY);
+}
+
 }  // namespace
 
 ChatWindow::ChatWindow(GatewayClient* client, const QString& session_id,
@@ -70,45 +75,74 @@ ChatWindow::ChatWindow(GatewayClient* client, const QString& session_id,
       display_name_(display_name),
       my_id_(my_id) {
   setWindowTitle(QString("会话 - %1").arg(display_name));
-  resize(560, 620);
+  resize(640, 700);
 
   auto* v = new QVBoxLayout(this);
+  v->setContentsMargins(0, 0, 0, 0);
+  v->setSpacing(0);
 
-  // 顶栏：历史分页
+  // 顶栏：标题 + 历史分页
   auto* top = new QHBoxLayout();
+  top->setContentsMargins(12, 10, 12, 10);
   more_btn_ = new QPushButton(QStringLiteral("加载更多"), this);
   more_btn_->setEnabled(false);
   status_ = new QLabel(QStringLiteral("历史加载中..."), this);
+  status_->setObjectName(QStringLiteral("hint"));
   top->addWidget(more_btn_);
   top->addWidget(status_, 1);
   v->addLayout(top);
 
-  view_ = new QTextBrowser(this);
-  view_->setOpenLinks(false);
-  view_->setOpenExternalLinks(false);
+  auto* line = new QFrame(this);
+  line->setFrameShape(QFrame::HLine);
+  line->setObjectName(QStringLiteral("card"));
+  v->addWidget(line);
+
+  // 消息列表
+  view_ = new QListWidget(this);
+  view_->setObjectName(QStringLiteral("msgList"));
+  view_->setSelectionMode(QAbstractItemView::NoSelection);
+  view_->setFocusPolicy(Qt::NoFocus);
+  view_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  view_->setUniformItemSizes(false);
   v->addWidget(view_, 1);
 
-  auto* row = new QHBoxLayout();
-  image_btn_ = new QPushButton(QStringLiteral("图片"), this);
-  file_btn_ = new QPushButton(QStringLiteral("文件"), this);
-  voice_btn_ = new QPushButton(QStringLiteral("录音"), this);
-  input_ = new QLineEdit(this);
+  // 底部输入区
+  auto* input_panel = new QWidget(this);
+  input_panel->setStyleSheet(QStringLiteral("background:#FFFFFF;"));
+  auto* iv = new QVBoxLayout(input_panel);
+  iv->setContentsMargins(12, 8, 12, 10);
+  iv->setSpacing(6);
+  auto* btn_row = new QHBoxLayout();
+  image_btn_ = new QPushButton(QStringLiteral("图片"), input_panel);
+  file_btn_ = new QPushButton(QStringLiteral("文件"), input_panel);
+  voice_btn_ = new QPushButton(QStringLiteral("录音"), input_panel);
+  for (auto* b : {image_btn_, file_btn_, voice_btn_}) b->setObjectName(QStringLiteral("toolBtn"));
+  btn_row->addWidget(image_btn_);
+  btn_row->addWidget(file_btn_);
+  btn_row->addWidget(voice_btn_);
+  btn_row->addStretch(1);
+  iv->addLayout(btn_row);
+
+  auto* send_row = new QHBoxLayout();
+  send_row->setSpacing(8);
+  input_ = new QLineEdit(input_panel);
   input_->setPlaceholderText(QStringLiteral("输入消息，回车发送"));
-  send_btn_ = new QPushButton(QStringLiteral("发送"), this);
-  row->addWidget(image_btn_);
-  row->addWidget(file_btn_);
-  row->addWidget(voice_btn_);
-  row->addWidget(input_, 1);
-  row->addWidget(send_btn_);
-  v->addLayout(row);
+  send_btn_ = new QPushButton(QStringLiteral("发送"), input_panel);
+  send_btn_->setObjectName(QStringLiteral("primary"));
+  send_btn_->setFixedWidth(84);
+  send_row->addWidget(input_, 1);
+  send_row->addWidget(send_btn_);
+  iv->addLayout(send_row);
+  v->addWidget(input_panel);
 
   connect(send_btn_, &QPushButton::clicked, this, &ChatWindow::send_text);
   connect(input_, &QLineEdit::returnPressed, this, &ChatWindow::send_text);
-  connect(image_btn_, &QPushButton::clicked, this, [this]() { send_attachment(MESSAGE_TYPE_IMAGE); });
-  connect(file_btn_, &QPushButton::clicked, this, [this]() { send_attachment(MESSAGE_TYPE_FILE); });
+  connect(image_btn_, &QPushButton::clicked, this,
+          [this]() { send_attachment(MESSAGE_TYPE_IMAGE); });
+  connect(file_btn_, &QPushButton::clicked, this,
+          [this]() { send_attachment(MESSAGE_TYPE_FILE); });
   connect(voice_btn_, &QPushButton::clicked, this, &ChatWindow::toggle_record);
   connect(more_btn_, &QPushButton::clicked, this, [this]() { load_history(oldest_ts_); });
-  connect(view_, &QTextBrowser::anchorClicked, this, &ChatWindow::on_anchor);
 
   recorder_ = new WavRecorder(this);
   record_tick_ = new QTimer(this);
@@ -131,11 +165,20 @@ void ChatWindow::load_members() {
       REQ_TYPE_GET_SESSION_MEMBER, req,
       [this](bool ok, const QString&, const GetSessionMemberResp& resp) {
         if (!ok) return;
+        member_names_.clear();
         for (const auto& m : resp.members()) {
           member_names_[QString::fromStdString(m.user_id())] =
               QString::fromStdString(m.nickname().empty() ? m.user_id() : m.nickname());
         }
-        render_all(true);
+        group_chat_ = resp.members_size() > 2;
+        // 群聊时行内要显示发送者昵称：整表重建（仅此一次；insert_row 会重填 rows_）
+        auto* bar = view_->verticalScrollBar();
+        const int old_value = bar->value();
+        const int old_max = bar->maximum();
+        rows_.clear();
+        for (int i = view_->count() - 1; i >= 0; --i) delete view_->item(i);  // 连同 item widget
+        for (const auto& m : messages_) insert_row(m, view_->count());
+        bar->setValue(old_value + (bar->maximum() - old_max));
       });
 }
 
@@ -148,7 +191,7 @@ void ChatWindow::load_history(int64_t cursor) {
   GetHistoryReq req;
   req.set_chat_session_id(session_id_.toStdString());
   // 服务端语义为 create_time < cursor（开区间），游标用「最旧时间戳 + 1」，
-  // 否则与分页边界同秒的消息会被永久跳过；重复项由 shown_ids_ 去重
+  // 否则与分页边界同秒的消息会被永久跳过；重复项由 message_id 去重
   req.set_cursor_timestamp(prepend ? cursor + 1 : 0);
   req.set_limit(kPageSize);
   client_->call_p<GetHistoryResp>(
@@ -160,134 +203,245 @@ void ChatWindow::load_history(int64_t cursor) {
           more_btn_->setEnabled(true);
           return;
         }
+        auto* bar = view_->verticalScrollBar();
+        const int old_value = bar->value();
+        const int old_max = bar->maximum();
+
+        // 先过滤重复（rows_ 里已有的 message_id），再插行、再合并 messages_
         QVector<im::MessageInfo> page;
         for (const auto& m : resp.messages()) {
-          if (shown_ids_.contains(QString::fromStdString(m.message_id()))) continue;
-          page.append(m);
+          if (!rows_.contains(QString::fromStdString(m.message_id()))) page.append(m);
+        }
+        int index = 0;
+        for (const auto& m : page) {
+          if (prepend) {
+            insert_row(m, index++);  // 服务端升序返回整页，依次插在表头即升序衔接
+          } else {
+            insert_row(m, view_->count());
+          }
         }
         if (prepend) {
-          // 服务端升序返回：整页插到最前，保持全局升序
-          for (int i = page.size() - 1; i >= 0; --i) messages_.prepend(page[i]);
+          QVector<im::MessageInfo> merged;
+          merged.reserve(messages_.size() + page.size());
+          for (const auto& m : page) merged.append(m);
+          for (const auto& m : messages_) merged.append(m);
+          messages_ = merged;
         } else {
           for (const auto& m : page) messages_.append(m);
         }
-        for (const auto& m : page) shown_ids_.insert(QString::fromStdString(m.message_id()));
+
         if (resp.messages_size() < kPageSize) no_more_history_ = true;
         if (!messages_.isEmpty()) oldest_ts_ = messages_.first().create_time();
-        render_all(prepend);
         more_btn_->setEnabled(!no_more_history_ && !messages_.isEmpty());
         set_status(prepend && page.isEmpty() ? QStringLiteral("没有更多历史了")
                                             : QStringLiteral("%1 条消息").arg(messages_.size()));
+        if (prepend) {
+          bar->setValue(old_value + (bar->maximum() - old_max));  // 视口停在原消息
+        } else {
+          view_->scrollToBottom();
+        }
       });
+}
+
+const im::MessageInfo* ChatWindow::find_message(const QString& message_id) const {
+  for (const auto& m : messages_) {
+    if (QString::fromStdString(m.message_id()) == message_id) return &m;
+  }
+  return nullptr;
 }
 
 void ChatWindow::on_message_push(const QByteArray& body) {
   im::MessageInfo msg;
   if (!msg.ParseFromArray(body.constData(), body.size())) return;
   if (QString::fromStdString(msg.chat_session_id()) != session_id_) return;
-  append_message(msg);
+  on_push_message(msg);
   if (isActiveWindow()) emit seen(session_id_);
 }
 
-void ChatWindow::append_message(const im::MessageInfo& msg) {
+void ChatWindow::on_push_message(const im::MessageInfo& msg) {
   const QString mid = QString::fromStdString(msg.message_id());
-  if (shown_ids_.contains(mid)) return;  // 广播回来的自己的消息/重复推送
-  shown_ids_.insert(mid);
+  if (rows_.contains(mid)) return;  // 广播回来的自己的消息/重复推送
   messages_.append(msg);
-  if (!msg.file_id().empty()) file_names_[QString::fromStdString(msg.file_id())] =
-                                  QString::fromStdString(msg.file_name());
-  render_all(false);
+  insert_row(msg, view_->count());
+  view_->scrollToBottom();
 }
 
-QString ChatWindow::sender_name(const im::MessageInfo& msg) const {
+QString ChatWindow::sender_display_name(const im::MessageInfo& msg) const {
   const QString uid = QString::fromStdString(msg.sender_id());
   if (uid == my_id_) return QStringLiteral("我");
   return member_names_.value(uid, uid);
 }
 
-QString ChatWindow::bubble_html(const im::MessageInfo& msg) const {
+QPixmap make_chat_avatar(const QString& name) { return avatar_pixmap(name, 36); }
+
+QWidget* ChatWindow::build_row(const im::MessageInfo& msg) {
   const bool mine = QString::fromStdString(msg.sender_id()) == my_id_;
-  const QString color = mine ? QStringLiteral("#1a73e8") : QStringLiteral("#333");
-  const QString fid = QString::fromStdString(msg.file_id());
-  const QString fname = escape_html(QString::fromStdString(msg.file_name()));
+  auto* w = new QWidget(this);
+  auto* v = new QVBoxLayout(w);
+  v->setContentsMargins(12, 5, 12, 5);
+  v->setSpacing(3);
 
-  QString content;
-  switch (msg.type()) {
-    case MESSAGE_TYPE_TEXT:
-      content = escape_html(QString::fromStdString(msg.content()));
-      break;
-    case MESSAGE_TYPE_IMAGE: {
-      const QString img = images_.contains(fid)
-                              ? QString("<img src=\"imimg:%1\" width=\"%2\">")
-                                    .arg(fid)
-                                    .arg(kImageWidth)
-                              : QStringLiteral("<i>[图片下载中...]</i>");
-      content = QString("%1 %2 <a href=\"imgsave:%3\">[保存]</a>").arg(img, fname, fid);
-      break;
-    }
-    case MESSAGE_TYPE_FILE:
-      content = QStringLiteral("[文件] %1 (%2) <a href=\"imsave:%3\">[另存]</a>")
-                    .arg(fname, human_size(msg.file_size()), fid);
-      break;
-    case MESSAGE_TYPE_VOICE: {
-      const QString asr = escape_html(QString::fromStdString(msg.asr_text()));
-      const QString label = asr.isEmpty() ? QStringLiteral("(转写中/无文本)") : asr;
-      content = QStringLiteral("[语音] %1 <a href=\"implay:%2\">[%3]</a>")
-                    .arg(label, fid, playing_file_id_ == fid ? QStringLiteral("播放中")
-                                                             : QStringLiteral("播放"));
-      break;
-    }
-    default:
-      content = QStringLiteral("[未知类型]");
-      break;
-  }
+  auto* time_lbl = new QLabel(format_time(msg.create_time()), w);
+  time_lbl->setObjectName(QStringLiteral("msgTime"));
+  time_lbl->setAlignment(Qt::AlignCenter);
+  v->addWidget(time_lbl);
 
-  return QStringLiteral(
-             "<div style='margin:6px 0'>"
-             "<span style='color:#999;font-size:small'>[%1] %2</span><br>"
-             "<span style='color:%3'>%4</span></div>")
-      .arg(format_time(msg.create_time()), escape_html(sender_name(msg)), color, content);
-}
+  auto* line = new QHBoxLayout();
+  line->setSpacing(8);
 
-void ChatWindow::render_all(bool keep_position) {
-  auto* bar = view_->verticalScrollBar();
-  const int old_value = bar->value();
-  const int old_max = bar->maximum();
+  const QString sender_name = sender_display_name(msg);
+  auto* avatar = new QLabel(w);
+  avatar->setPixmap(make_chat_avatar(sender_name));
+  avatar->setFixedSize(36, 36);
 
-  // 图片消息：未下载的先触发下载（回调里再重绘）
-  for (const auto& m : messages_) {
-    if (m.type() == MESSAGE_TYPE_IMAGE && !m.file_id().empty()) {
-      ensure_image(QString::fromStdString(m.file_id()));
-    }
-  }
+  QWidget* bubble = build_bubble(msg, mine);
 
-  // 已下载图片注册为文档资源，HTML 里以 imimg:<file_id> 引用
-  for (auto it = images_.constBegin(); it != images_.constEnd(); ++it) {
-    view_->document()->addResource(QTextDocument::ImageResource,
-                                   QUrl(QStringLiteral("imimg:") + it.key()), QVariant(*it));
-  }
-
-  QString html;
-  for (const auto& m : messages_) html += bubble_html(m);
-  view_->setHtml(html);
-
-  if (keep_position) {
-    // 预置历史/补下载：内容变高后把视口按增量下移，视觉上停在原消息
-    bar->setValue(old_value + (bar->maximum() - old_max));
+  if (mine) {
+    line->addStretch(1);
+    line->addWidget(bubble);
+    line->addWidget(avatar, 0, Qt::AlignTop);
   } else {
-    bar->setValue(bar->maximum());  // 新消息：滚到底
+    line->addWidget(avatar, 0, Qt::AlignTop);
+    auto* col = new QVBoxLayout();
+    col->setSpacing(1);
+    if (group_chat_) {
+      auto* name_lbl = new QLabel(sender_name, w);
+      name_lbl->setObjectName(QStringLiteral("msgSender"));
+      col->addWidget(name_lbl);
+    }
+    col->addWidget(bubble);
+    line->addLayout(col);
+    line->addStretch(1);
+  }
+  v->addLayout(line);
+  return w;
+}
+
+QWidget* ChatWindow::build_bubble(const im::MessageInfo& msg, bool mine) {
+  const QString fid = QString::fromStdString(msg.file_id());
+  const QString fname = QString::fromStdString(msg.file_name());
+
+  switch (msg.type()) {
+    case MESSAGE_TYPE_TEXT: {
+      const QString text = QString::fromStdString(msg.content());
+      auto* lbl = new QLabel(text, this);
+      lbl->setObjectName(mine ? QStringLiteral("bubbleSelf") : QStringLiteral("bubblePeer"));
+      lbl->setWordWrap(true);
+      lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+      const QSize s = text_bubble_size(text);
+      lbl->setFixedSize(s);
+      return lbl;
+    }
+    case MESSAGE_TYPE_IMAGE: {
+      // 图片直接展示（微信样式，无气泡底），下方给一个「保存」链接按钮
+      auto* col = new QWidget(this);
+      auto* cv = new QVBoxLayout(col);
+      cv->setContentsMargins(0, 0, 0, 0);
+      cv->setSpacing(0);
+      if (images_.contains(fid)) {
+        QImage img = images_.value(fid);
+        QImage scaled = img.scaled(kImageMax, kImageMax, Qt::KeepAspectRatio,
+                                   Qt::SmoothTransformation);
+        auto* img_lbl = new QLabel(col);
+        img_lbl->setPixmap(QPixmap::fromImage(scaled));
+        img_lbl->setFixedSize(scaled.size());
+        cv->addWidget(img_lbl);
+      } else {
+        auto* placeholder = new QLabel(QStringLiteral("[ 图片加载中 ]"), col);
+        placeholder->setObjectName(mine ? QStringLiteral("bubbleSelf")
+                                        : QStringLiteral("bubblePeer"));
+        placeholder->setFixedSize(180, 90);
+        placeholder->setAlignment(Qt::AlignCenter);
+        cv->addWidget(placeholder);
+        ensure_image(fid);
+      }
+      auto* save_btn = new QPushButton(QStringLiteral("保存"), col);
+      save_btn->setObjectName(QStringLiteral("linkBtn"));
+      cv->addWidget(save_btn, 0, Qt::AlignLeft);
+      connect(save_btn, &QPushButton::clicked, this,
+              [this, fid, fname]() { save_attachment(fid, fname); });
+      return col;
+    }
+    case MESSAGE_TYPE_FILE: {
+      auto* frame = new QFrame(this);
+      frame->setObjectName(mine ? QStringLiteral("bubbleSelf") : QStringLiteral("bubblePeer"));
+      auto* h = new QHBoxLayout(frame);
+      h->setContentsMargins(11, 8, 11, 8);
+      h->setSpacing(8);
+      auto* icon = new QLabel(QStringLiteral("📄"), frame);
+      auto* col = new QVBoxLayout();
+      col->setSpacing(1);
+      auto* name_lbl = new QLabel(fname.isEmpty() ? QStringLiteral("文件") : fname, frame);
+      name_lbl->setObjectName(QStringLiteral("fileName"));
+      auto* size_lbl = new QLabel(human_size(msg.file_size()), frame);
+      size_lbl->setObjectName(QStringLiteral("fileSize"));
+      col->addWidget(name_lbl);
+      col->addWidget(size_lbl);
+      auto* save_btn = new QPushButton(QStringLiteral("另存"), frame);
+      save_btn->setObjectName(QStringLiteral("linkBtn"));
+      h->addWidget(icon);
+      h->addLayout(col, 1);
+      h->addWidget(save_btn);
+      connect(save_btn, &QPushButton::clicked, this,
+              [this, fid, fname]() { save_attachment(fid, fname); });
+      frame->setMinimumWidth(240);
+      return frame;
+    }
+    case MESSAGE_TYPE_VOICE: {
+      const QString asr = QString::fromStdString(msg.asr_text());
+      auto* frame = new QFrame(this);
+      frame->setObjectName(mine ? QStringLiteral("bubbleSelf") : QStringLiteral("bubblePeer"));
+      auto* h = new QHBoxLayout(frame);
+      h->setContentsMargins(11, 8, 11, 8);
+      h->setSpacing(8);
+      auto* play_btn = new QPushButton(
+          playing_file_id_ == fid ? QStringLiteral("⏸ 停止") : QStringLiteral("▶ 播放"), frame);
+      play_btn->setObjectName(QStringLiteral("linkBtn"));
+      auto* asr_lbl = new QLabel(asr.isEmpty() ? QStringLiteral("(转写中/无文本)") : asr, frame);
+      asr_lbl->setWordWrap(true);
+      asr_lbl->setMaximumWidth(240);
+      h->addWidget(play_btn);
+      h->addWidget(asr_lbl, 1);
+      connect(play_btn, &QPushButton::clicked, this, [this, fid]() { play_voice(fid); });
+      return frame;
+    }
+    default: {
+      auto* lbl = new QLabel(QStringLiteral("[未知类型]"), this);
+      lbl->setObjectName(mine ? QStringLiteral("bubbleSelf") : QStringLiteral("bubblePeer"));
+      lbl->setFixedSize(90, 38);
+      lbl->setAlignment(Qt::AlignCenter);
+      return lbl;
+    }
   }
 }
 
-void ChatWindow::on_anchor(const QUrl& url) {
-  const QString scheme = url.scheme();
-  const QString fid = url.path();
-  if (fid.isEmpty()) return;
-  if (scheme == QLatin1String("imsave") || scheme == QLatin1String("imgsave")) {
-    save_attachment(fid, file_names_.value(fid, QStringLiteral("download.bin")));
-  } else if (scheme == QLatin1String("implay")) {
-    play_voice(fid);
+void ChatWindow::insert_row(const im::MessageInfo& msg, int index) {
+  const QString mid = QString::fromStdString(msg.message_id());
+  auto* item = new QListWidgetItem;
+  QWidget* w = build_row(msg);
+  item->setSizeHint(w->sizeHint());
+  view_->insertItem(index, item);
+  view_->setItemWidget(item, w);
+  rows_[mid] = item;
+  if (!msg.file_id().empty()) {
+    file_names_[QString::fromStdString(msg.file_id())] = QString::fromStdString(msg.file_name());
   }
+  if (msg.type() == MESSAGE_TYPE_IMAGE && !msg.file_id().empty()) {
+    ensure_image(QString::fromStdString(msg.file_id()));
+  }
+}
+
+void ChatWindow::rebuild_row(const QString& message_id) {
+  auto it = rows_.constFind(message_id);
+  if (it == rows_.constEnd()) return;
+  QListWidgetItem* item = it.value();
+  const im::MessageInfo* msg = find_message(message_id);
+  if (msg == nullptr) return;
+  // takeItemWidget 会被 setItemWidget 内部清理，这里直接换新
+  QWidget* w = build_row(*msg);
+  view_->removeItemWidget(item);
+  view_->setItemWidget(item, w);
+  item->setSizeHint(w->sizeHint());
 }
 
 void ChatWindow::ensure_image(const QString& file_id) {
@@ -300,7 +454,12 @@ void ChatWindow::ensure_image(const QString& file_id) {
         QImage img;
         if (!img.loadFromData(data)) return;
         images_[file_id] = img;
-        render_all(true);
+        // 就地刷新含该图的消息行
+        for (const auto& m : messages_) {
+          if (m.type() == MESSAGE_TYPE_IMAGE && QString::fromStdString(m.file_id()) == file_id) {
+            rebuild_row(QString::fromStdString(m.message_id()));
+          }
+        }
       });
 }
 
@@ -333,7 +492,11 @@ void ChatWindow::play_voice(const QString& file_id) {
   if (playing_file_id_ == file_id && player_ != nullptr) {  // 再次点击 = 停止
     player_->stop();
     playing_file_id_.clear();
-    render_all(true);
+    for (const auto& m : messages_) {
+      if (m.type() == MESSAGE_TYPE_VOICE && QString::fromStdString(m.file_id()) == file_id) {
+        rebuild_row(QString::fromStdString(m.message_id()));
+      }
+    }
     return;
   }
   const QString cached = QDir::tempPath() + "/im_voice_" + file_id + ".wav";
@@ -345,15 +508,25 @@ void ChatWindow::play_voice(const QString& file_id) {
       connect(player_, &QMediaPlayer::mediaStatusChanged, this,
               [this](QMediaPlayer::MediaStatus st) {
                 if (st == QMediaPlayer::EndOfMedia || st == QMediaPlayer::InvalidMedia) {
+                  const QString fid = playing_file_id_;
                   playing_file_id_.clear();
-                  render_all(true);
+                  for (const auto& m : messages_) {
+                    if (m.type() == MESSAGE_TYPE_VOICE &&
+                        QString::fromStdString(m.file_id()) == fid) {
+                      rebuild_row(QString::fromStdString(m.message_id()));
+                    }
+                  }
                 }
               });
     }
     playing_file_id_ = file_id;
     player_->setSource(QUrl::fromLocalFile(cached));
     player_->play();
-    render_all(true);
+    for (const auto& m : messages_) {
+      if (m.type() == MESSAGE_TYPE_VOICE && QString::fromStdString(m.file_id()) == file_id) {
+        rebuild_row(QString::fromStdString(m.message_id()));
+      }
+    }
     set_status(QStringLiteral("播放语音"));
   };
 
@@ -466,7 +639,7 @@ void ChatWindow::transmit(im::MessageType type, const QString& content, const QS
           msg.set_file_name(file_name.toStdString());
           msg.set_file_size(file_size);
           msg.set_create_time(resp.create_time());
-          append_message(msg);
+          on_push_message(msg);
         }
       });
 }

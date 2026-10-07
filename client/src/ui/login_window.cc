@@ -1,6 +1,7 @@
 #include "ui/login_window.hpp"
 
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -17,19 +18,27 @@ namespace im {
 LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
     : QDialog(parent), client_(client) {
   setWindowTitle(QStringLiteral("IM 即时通讯 - 登录"));
-  setFixedSize(380, 300);
+  setFixedSize(420, 470);
 
   auto* layout = new QVBoxLayout(this);
+  layout->setContentsMargins(24, 22, 24, 12);
+  layout->setSpacing(10);
+
+  // 标题
+  auto* title = new QLabel(QStringLiteral("IM 即时通讯"), this);
+  title->setObjectName(QStringLiteral("title"));
+  title->setAlignment(Qt::AlignCenter);
+  auto* subtitle = new QLabel(QStringLiteral("账号密码登录，也可使用手机号验证码登录"), this);
+  subtitle->setObjectName(QStringLiteral("subtitle"));
+  subtitle->setAlignment(Qt::AlignCenter);
+  layout->addWidget(title);
+  layout->addWidget(subtitle);
+
   tabs_ = new QTabWidget(this);
-  layout->addWidget(tabs_);
-
-  auto* login_tab = new QWidget(this);
-  build_login_tab(login_tab);
-  tabs_->addTab(login_tab, QStringLiteral("登录"));
-
-  auto* reg_tab = new QWidget(this);
-  build_register_tab(reg_tab);
-  tabs_->addTab(reg_tab, QStringLiteral("注册"));
+  layout->addWidget(tabs_, 1);
+  tabs_->addTab(build_password_tab(), QStringLiteral("账号密码"));
+  tabs_->addTab(build_sms_tab(), QStringLiteral("验证码登录"));
+  tabs_->addTab(build_register_tab(), QStringLiteral("注册"));
 
   // 服务器地址（持久化；默认为线上网关，本机调试可改 127.0.0.1）
   QSettings settings("im-system", "im-client");
@@ -37,10 +46,14 @@ LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
       settings.value("server/host", QStringLiteral("47.112.192.119")).toString();
   const int port = settings.value("server/port", 9000).toInt();
   auto* addr_row = new QHBoxLayout();
+  auto* addr_label = new QLabel(QStringLiteral("服务器"), this);
+  addr_label->setObjectName(QStringLiteral("hint"));
   auto* addr_edit = new QLineEdit(host, this);
+  addr_edit->setObjectName(QStringLiteral("addrEdit"));
   auto* port_edit = new QLineEdit(QString::number(port), this);
-  port_edit->setFixedWidth(64);
-  addr_row->addWidget(new QLabel(QStringLiteral("服务器"), this));
+  port_edit->setObjectName(QStringLiteral("addrEdit"));
+  port_edit->setFixedWidth(52);
+  addr_row->addWidget(addr_label);
   addr_row->addWidget(addr_edit, 1);
   addr_row->addWidget(new QLabel(QStringLiteral(":"), this));
   addr_row->addWidget(port_edit);
@@ -51,64 +64,167 @@ LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
   });
 }
 
-void LoginWindow::build_login_tab(QWidget* tab) {
+QWidget* LoginWindow::build_password_tab() {
+  auto* tab = new QWidget(this);
   auto* v = new QVBoxLayout(tab);
-  auto* form = new QFormLayout();  // 不指定父：交给 v 接管（同时给两个布局设父会丢控件）
-  login_phone_ = new QLineEdit(tab);
-  login_phone_->setPlaceholderText(QStringLiteral("手机号"));
-  login_password_ = new QLineEdit(tab);
-  login_password_->setEchoMode(QLineEdit::Password);
-  login_password_->setPlaceholderText(QStringLiteral("密码"));
-  form->addRow(QStringLiteral("手机号"), login_phone_);
-  form->addRow(QStringLiteral("密码"), login_password_);
+  v->setContentsMargins(18, 20, 18, 8);
+  v->setSpacing(12);
 
-  login_btn_ = new QPushButton(QStringLiteral("登录"), tab);
-  login_btn_->setDefault(true);  // 密码框回车即登录
-  login_status_ = new QLabel(tab);
-  login_status_->setWordWrap(true);
-  v->addLayout(form);
-  v->addWidget(login_btn_);
-  v->addWidget(login_status_);
+  pwd_phone_ = new QLineEdit(tab);
+  pwd_phone_->setPlaceholderText(QStringLiteral("手机号"));
+  pwd_password_ = new QLineEdit(tab);
+  pwd_password_->setEchoMode(QLineEdit::Password);
+  pwd_password_->setPlaceholderText(QStringLiteral("密码"));
+  v->addWidget(pwd_phone_);
+  v->addWidget(pwd_password_);
+
+  pwd_btn_ = new QPushButton(QStringLiteral("登 录"), tab);
+  pwd_btn_->setObjectName(QStringLiteral("primary"));
+  pwd_btn_->setDefault(true);
+  v->addWidget(pwd_btn_);
+
+  pwd_status_ = new QLabel(tab);
+  pwd_status_->setObjectName(QStringLiteral("hint"));
+  pwd_status_->setWordWrap(true);
+  v->addWidget(pwd_status_);
   v->addStretch(1);
-  connect(login_btn_, &QPushButton::clicked, this, &LoginWindow::do_login);
+
+  connect(pwd_btn_, &QPushButton::clicked, this, &LoginWindow::do_password_login);
+  return tab;
 }
 
-void LoginWindow::build_register_tab(QWidget* tab) {
+QWidget* LoginWindow::build_sms_tab() {
+  auto* tab = new QWidget(this);
   auto* v = new QVBoxLayout(tab);
-  auto* form = new QFormLayout();  // 同上：单一布局持有
+  v->setContentsMargins(18, 20, 18, 8);
+  v->setSpacing(12);
+
+  sms_phone_ = new QLineEdit(tab);
+  sms_phone_->setPlaceholderText(QStringLiteral("手机号"));
+  v->addWidget(sms_phone_);
+
+  auto* code_row = new QHBoxLayout();
+  code_row->setSpacing(8);
+  sms_code_ = new QLineEdit(tab);
+  sms_code_->setPlaceholderText(QStringLiteral("短信验证码"));
+  sms_send_btn_ = new QPushButton(QStringLiteral("获取验证码"), tab);
+  sms_send_btn_->setFixedWidth(110);
+  code_row->addWidget(sms_code_, 1);
+  code_row->addWidget(sms_send_btn_);
+  v->addLayout(code_row);
+
+  sms_btn_ = new QPushButton(QStringLiteral("登 录"), tab);
+  sms_btn_->setObjectName(QStringLiteral("primary"));
+  v->addWidget(sms_btn_);
+
+  sms_status_ = new QLabel(tab);
+  sms_status_->setObjectName(QStringLiteral("hint"));
+  sms_status_->setWordWrap(true);
+  v->addWidget(sms_status_);
+  v->addStretch(1);
+
+  connect(sms_send_btn_, &QPushButton::clicked, this, [this]() {
+    send_code(sms_phone_->text().trimmed(), sms_send_btn_, sms_status_);
+  });
+  connect(sms_btn_, &QPushButton::clicked, this, &LoginWindow::do_sms_login);
+  return tab;
+}
+
+QWidget* LoginWindow::build_register_tab() {
+  auto* tab = new QWidget(this);
+  auto* v = new QVBoxLayout(tab);
+  v->setContentsMargins(18, 20, 18, 8);
+  v->setSpacing(12);
+
+  auto* phone_row = new QHBoxLayout();
+  phone_row->setSpacing(8);
   reg_phone_ = new QLineEdit(tab);
+  reg_phone_->setPlaceholderText(QStringLiteral("手机号"));
+  reg_send_btn_ = new QPushButton(QStringLiteral("获取验证码"), tab);
+  reg_send_btn_->setFixedWidth(110);
+  phone_row->addWidget(reg_phone_, 1);
+  phone_row->addWidget(reg_send_btn_);
+  v->addLayout(phone_row);
+
   reg_code_ = new QLineEdit(tab);
-  reg_code_->setPlaceholderText(QStringLiteral("开发模式固定码 666666"));
+  reg_code_->setPlaceholderText(QStringLiteral("短信验证码（开发模式固定码 666666）"));
+  v->addWidget(reg_code_);
+
   reg_nickname_ = new QLineEdit(tab);
+  reg_nickname_->setPlaceholderText(QStringLiteral("昵称"));
+  v->addWidget(reg_nickname_);
+
   reg_password_ = new QLineEdit(tab);
   reg_password_->setEchoMode(QLineEdit::Password);
-  form->addRow(QStringLiteral("手机号"), reg_phone_);
-  form->addRow(QStringLiteral("验证码"), reg_code_);
-  form->addRow(QStringLiteral("昵称"), reg_nickname_);
-  form->addRow(QStringLiteral("密码"), reg_password_);
+  reg_password_->setPlaceholderText(QStringLiteral("设置密码"));
+  v->addWidget(reg_password_);
 
-  send_code_btn_ = new QPushButton(QStringLiteral("发送验证码"), tab);
   reg_btn_ = new QPushButton(QStringLiteral("注册并登录"), tab);
-  reg_status_ = new QLabel(tab);
-  reg_status_->setWordWrap(true);
-  v->addLayout(form);
-  v->addWidget(send_code_btn_);
+  reg_btn_->setObjectName(QStringLiteral("primary"));
   v->addWidget(reg_btn_);
+
+  reg_status_ = new QLabel(tab);
+  reg_status_->setObjectName(QStringLiteral("hint"));
+  reg_status_->setWordWrap(true);
   v->addWidget(reg_status_);
   v->addStretch(1);
-  connect(send_code_btn_, &QPushButton::clicked, this, &LoginWindow::do_send_code);
+
+  connect(reg_send_btn_, &QPushButton::clicked, this, [this]() {
+    send_code(reg_phone_->text().trimmed(), reg_send_btn_, reg_status_);
+  });
   connect(reg_btn_, &QPushButton::clicked, this, &LoginWindow::do_register);
+  return tab;
 }
 
-void LoginWindow::do_login() {
-  const QString phone = login_phone_->text().trimmed();
-  const QString password = login_password_->text();
-  if (phone.isEmpty() || password.isEmpty()) {
-    login_status_->setText(QStringLiteral("请输入手机号和密码"));
+void LoginWindow::send_code(const QString& phone, QPushButton* btn, QLabel* status) {
+  if (phone.isEmpty()) {
+    set_status(status, QStringLiteral("请先输入手机号"));
     return;
   }
-  login_btn_->setEnabled(false);
-  login_status_->setText(QStringLiteral("登录中..."));
+  btn->setEnabled(false);
+  SendSmsCodeReq req;
+  req.set_phone(phone.toStdString());
+  client_->call_p<SendSmsCodeResp>(
+      REQ_TYPE_SEND_SMS_CODE, req,
+      [this, btn, status](bool ok, const QString& errmsg, const SendSmsCodeResp&) {
+        if (!ok) {
+          btn->setEnabled(true);
+          set_status(status, errmsg);
+          return;
+        }
+        set_status(status, QStringLiteral("验证码已发送（开发模式请输入 666666）"));
+        // 60s 限发倒计时
+        btn->setProperty("left", 60);
+        btn->setText(QStringLiteral("重发(60s)"));
+        auto* timer = new QTimer(btn);
+        timer->setInterval(1000);
+        connect(timer, &QTimer::timeout, btn, [btn, timer]() {
+          int left = btn->property("left").toInt() - 1;
+          btn->setProperty("left", left);
+          if (left <= 0) {
+            btn->setText(QStringLiteral("获取验证码"));
+            btn->setEnabled(true);
+            timer->stop();
+            timer->deleteLater();
+          } else {
+            btn->setText(QStringLiteral("重发(%1s)").arg(left));
+          }
+        });
+        timer->start();
+      });
+}
+
+void LoginWindow::set_status(QLabel* label, const QString& text) { label->setText(text); }
+
+void LoginWindow::do_password_login() {
+  const QString phone = pwd_phone_->text().trimmed();
+  const QString password = pwd_password_->text();
+  if (phone.isEmpty() || password.isEmpty()) {
+    set_status(pwd_status_, QStringLiteral("请输入手机号和密码"));
+    return;
+  }
+  pwd_btn_->setEnabled(false);
+  set_status(pwd_status_, QStringLiteral("登录中..."));
 
   UserLoginReq req;
   req.set_phone(phone.toStdString());
@@ -116,37 +232,37 @@ void LoginWindow::do_login() {
   req.set_password(password.toStdString());
   client_->call_p<UserLoginResp>(
       REQ_TYPE_LOGIN, req, [this](bool ok, const QString& errmsg, const UserLoginResp& resp) {
-        login_btn_->setEnabled(true);
+        pwd_btn_->setEnabled(true);
         if (!ok) {
-          login_status_->setText(errmsg);
+          set_status(pwd_status_, errmsg);
           return;
         }
         after_login(QString::fromStdString(resp.token()), resp.user_info());
       });
 }
 
-void LoginWindow::do_send_code() {
-  const QString phone = reg_phone_->text().trimmed();
-  if (phone.isEmpty()) {
-    reg_status_->setText(QStringLiteral("请先输入手机号"));
+void LoginWindow::do_sms_login() {
+  const QString phone = sms_phone_->text().trimmed();
+  const QString code = sms_code_->text().trimmed();
+  if (phone.isEmpty() || code.isEmpty()) {
+    set_status(sms_status_, QStringLiteral("请输入手机号和验证码"));
     return;
   }
-  send_code_btn_->setEnabled(false);
-  SendSmsCodeReq req;
+  sms_btn_->setEnabled(false);
+  set_status(sms_status_, QStringLiteral("登录中..."));
+
+  UserLoginReq req;
   req.set_phone(phone.toStdString());
-  client_->call_p<SendSmsCodeResp>(
-      REQ_TYPE_SEND_SMS_CODE, req,
-      [this](bool ok, const QString& errmsg, const SendSmsCodeResp&) {
-        send_code_btn_->setEnabled(true);
+  req.set_login_type(LOGIN_BY_SMS);
+  req.set_sms_code(code.toStdString());
+  client_->call_p<UserLoginResp>(
+      REQ_TYPE_LOGIN, req, [this](bool ok, const QString& errmsg, const UserLoginResp& resp) {
+        sms_btn_->setEnabled(true);
         if (!ok) {
-          reg_status_->setText(errmsg);
+          set_status(sms_status_, errmsg);
           return;
         }
-        reg_status_->setText(
-            QStringLiteral("验证码已发送（开发模式请输入 666666）"));
-        // 60s 限发：期间禁用按钮
-        send_code_btn_->setEnabled(false);
-        QTimer::singleShot(60000, this, [this]() { send_code_btn_->setEnabled(true); });
+        after_login(QString::fromStdString(resp.token()), resp.user_info());
       });
 }
 
@@ -156,11 +272,11 @@ void LoginWindow::do_register() {
   const QString nickname = reg_nickname_->text().trimmed();
   const QString password = reg_password_->text();
   if (phone.isEmpty() || code.isEmpty() || nickname.isEmpty() || password.isEmpty()) {
-    reg_status_->setText(QStringLiteral("请填写完整注册信息"));
+    set_status(reg_status_, QStringLiteral("请填写完整注册信息"));
     return;
   }
   reg_btn_->setEnabled(false);
-  reg_status_->setText(QStringLiteral("注册中..."));
+  set_status(reg_status_, QStringLiteral("注册中..."));
 
   UserRegisterReq req;
   req.set_phone(phone.toStdString());
@@ -168,11 +284,10 @@ void LoginWindow::do_register() {
   req.set_nickname(nickname.toStdString());
   req.set_password(password.toStdString());
   client_->call_p<UserRegisterResp>(
-      REQ_TYPE_REGISTER, req,
-      [this](bool ok, const QString& errmsg, const UserRegisterResp& resp) {
+      REQ_TYPE_REGISTER, req, [this](bool ok, const QString& errmsg, const UserRegisterResp&) {
         if (!ok) {
           reg_btn_->setEnabled(true);
-          reg_status_->setText(errmsg);
+          set_status(reg_status_, errmsg);
           return;
         }
         // 注册成功即登录（复用注册页的密码）
@@ -185,7 +300,7 @@ void LoginWindow::do_register() {
             [this](bool ok2, const QString& err2, const UserLoginResp& lresp) {
               reg_btn_->setEnabled(true);
               if (!ok2) {
-                reg_status_->setText(err2);
+                set_status(reg_status_, err2);
                 return;
               }
               after_login(QString::fromStdString(lresp.token()), lresp.user_info());

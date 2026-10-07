@@ -16,6 +16,7 @@
 #include <QVBoxLayout>
 
 #include "chat_window.hpp"
+#include "avatar.h"
 #include "message_storage.pb.h"
 #include "message_transmit.pb.h"
 #include "protocol/gateway_client.hpp"
@@ -443,6 +444,12 @@ void MainWindow::refresh_sessions() {
           sessions_[sid] = s;
           display_name_for(s);  // 异步补全显示名/头像，先建项
           auto* item = new QListWidgetItem(session_list_);
+          const QString name = session_names_.value(
+              sid, s.type() == SESSION_TYPE_GROUP
+                        ? QString::fromStdString(s.session_name())
+                        : sid);
+          item->setText(name);
+          item->setIcon(avatar_pixmap(name, 28));  // 默认首字头像，下载到真头像后覆盖
           item->setData(Qt::UserRole, sid);
           session_items_[sid] = item;
           update_session_item(sid);
@@ -512,6 +519,7 @@ void MainWindow::refresh_friends() {
           friends_[QString::fromStdString(u.user_id())] = u;
           auto* item =
               new QListWidgetItem(QString::fromStdString(u.nickname()), friend_list_);
+          item->setIcon(avatar_pixmap(QString::fromStdString(u.nickname()), 28));
           item->setData(Qt::UserRole, QString::fromStdString(u.user_id()));
           item->setData(Qt::UserRole + 1, QString::fromStdString(u.avatar_file_id()));
           ensure_avatar(QString::fromStdString(u.avatar_file_id()));
