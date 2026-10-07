@@ -98,11 +98,11 @@ do_login() {
   geom_id "$lid"
   xdotool windowactivate --sync "$lid" 2>/dev/null
   sleep 1
-  xdotool mousemove $((X + 207)) $((Y + 36)) click 1   # phone field
+  xdotool mousemove $((X + 209)) $((Y + 138)) click 1  # phone field
   sleep 1
   xdotool type --delay 60 "$PHONE"
   sleep 1
-  xdotool mousemove $((X + 207)) $((Y + 65)) click 1   # password field
+  xdotool mousemove $((X + 209)) $((Y + 184)) click 1  # password field
   sleep 1
   xdotool type --delay 60 "$PASSWORD"
   sleep 1
@@ -115,7 +115,7 @@ open_session() {
   local mid
   mid=$(main_win) || fail "no main window"
   geom_id "$mid"
-  xdotool mousemove $((X + 200)) $((Y + 57)) click --repeat 2 --delay 120 1
+  xdotool mousemove $((X + 200)) $((Y + 85)) click --repeat 2 --delay 120 1
   sleep 5
 }
 
@@ -149,7 +149,7 @@ case "${1:-1}" in
 4)
   cid=$(chat_win) || fail "no chat window"
   geom_id "$cid"
-  xdotool mousemove $((X + 350)) $((Y + 578)) click 1   # input field
+  xdotool mousemove $((X + 280)) $((Y + 651)) click 1  # input field (640x700 layout)
   sleep 1
   xdotool type --delay 60 "M9-GUI-$(date +%H%M%S)"
   sleep 1
