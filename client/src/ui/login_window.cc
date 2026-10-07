@@ -52,7 +52,8 @@ LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
 }
 
 void LoginWindow::build_login_tab(QWidget* tab) {
-  auto* form = new QFormLayout(tab);
+  auto* v = new QVBoxLayout(tab);
+  auto* form = new QFormLayout();  // 不指定父：交给 v 接管（同时给两个布局设父会丢控件）
   login_phone_ = new QLineEdit(tab);
   login_phone_->setPlaceholderText(QStringLiteral("手机号"));
   login_password_ = new QLineEdit(tab);
@@ -62,17 +63,19 @@ void LoginWindow::build_login_tab(QWidget* tab) {
   form->addRow(QStringLiteral("密码"), login_password_);
 
   login_btn_ = new QPushButton(QStringLiteral("登录"), tab);
+  login_btn_->setDefault(true);  // 密码框回车即登录
   login_status_ = new QLabel(tab);
   login_status_->setWordWrap(true);
-  auto* v = new QVBoxLayout(tab);
   v->addLayout(form);
   v->addWidget(login_btn_);
   v->addWidget(login_status_);
+  v->addStretch(1);
   connect(login_btn_, &QPushButton::clicked, this, &LoginWindow::do_login);
 }
 
 void LoginWindow::build_register_tab(QWidget* tab) {
-  auto* form = new QFormLayout(tab);
+  auto* v = new QVBoxLayout(tab);
+  auto* form = new QFormLayout();  // 同上：单一布局持有
   reg_phone_ = new QLineEdit(tab);
   reg_code_ = new QLineEdit(tab);
   reg_code_->setPlaceholderText(QStringLiteral("开发模式固定码 666666"));
@@ -88,11 +91,11 @@ void LoginWindow::build_register_tab(QWidget* tab) {
   reg_btn_ = new QPushButton(QStringLiteral("注册并登录"), tab);
   reg_status_ = new QLabel(tab);
   reg_status_->setWordWrap(true);
-  auto* v = new QVBoxLayout(tab);
   v->addLayout(form);
   v->addWidget(send_code_btn_);
   v->addWidget(reg_btn_);
   v->addWidget(reg_status_);
+  v->addStretch(1);
   connect(send_code_btn_, &QPushButton::clicked, this, &LoginWindow::do_send_code);
   connect(reg_btn_, &QPushButton::clicked, this, &LoginWindow::do_register);
 }
