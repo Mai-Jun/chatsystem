@@ -109,6 +109,7 @@ void GatewayClient::connect_push() {
 
 void GatewayClient::disconnect_push() {
   user_closed_ = true;
+  reconnect_timer_->stop();  // 取消挂起的自动重连（重新登录后由 connect_push 重新发起）
   ws_ready_ = false;
   ws_.close();
 }

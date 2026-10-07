@@ -72,6 +72,8 @@ QWidget* LoginWindow::build_password_tab() {
 
   pwd_phone_ = new QLineEdit(tab);
   pwd_phone_->setPlaceholderText(QStringLiteral("手机号"));
+  // 预填上次登录的手机号（退出登录回到本页时省一次输入）
+  pwd_phone_->setText(QSettings("im-system", "im-client").value("account/phone").toString());
   pwd_password_ = new QLineEdit(tab);
   pwd_password_->setEchoMode(QLineEdit::Password);
   pwd_password_->setPlaceholderText(QStringLiteral("密码"));

@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSettings>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -343,9 +344,14 @@ MainWindow::MainWindow(GatewayClient* client, im::UserInfo me, QWidget* parent)
   connect(logout_btn, &QPushButton::clicked, this, [this]() {
     UserLogoutReq req;
     client_->call_p<UserLogoutResp>(REQ_TYPE_LOGOUT, req,
-                                    [this](bool, const QString&, const UserLogoutResp&) {});
+                                    [](bool, const QString&, const UserLogoutResp&) {});
+    client_->disconnect_push();  // 断开旧账号推送通道，重登后按新 token 重连
     client_->clear_token();
-    qApp->quit();  // 简化：退出程序（重新打开进入登录页）
+    QSettings().remove(QStringLiteral("account/token"));  // 下次启动不再自动登录
+    for (auto* w : chat_windows_) w->deleteLater();  // 聊天窗持有旧账号会话数据，直接销毁
+    chat_windows_.clear();
+    emit logoutRequested();  // 主流程切回登录页，随后关闭并销毁主窗口
+    close();
   });
 
   connect_push();

@@ -14,6 +14,9 @@ conf/*.local.flags
 logs/
 data/
 
+# Windows 本机快捷方式（绝对路径，不入库；项目根目录的 IM即时通讯.lnk 即此类）
+*.lnk
+
 # IDE
 .vscode/
 .idea/

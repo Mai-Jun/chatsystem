@@ -29,6 +29,9 @@ class MainWindow : public QMainWindow {
   MainWindow(GatewayClient* client, im::UserInfo me, QWidget* parent = nullptr);
   ~MainWindow() override;
 
+ signals:
+  void logoutRequested();  // 退出登录：主流程据此切回登录/注册页（进程不退出）
+
  protected:
   void closeEvent(QCloseEvent* event) override;
 
