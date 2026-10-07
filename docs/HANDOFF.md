@@ -91,12 +91,14 @@
 - 服务器新增依赖：qt6-multimedia-dev、xvfb、openbox、xdotool、imagemagick（apt 直装）
 
 **待办（M9 剩余，2026-10-07 第二轮后）**：
-- **真机 GUI 手工测试**：Windows 侧 Qt/编译器均未装（本机无 git/cmake/Qt，见 env.md）。两条路：
-  ① MSYS2 全自动装（`pacman -S mingw-w64-x86_64-qt6-base qt6-multimedia qt6-websockets
-  qt6-imageformats protobuf cmake`，客户端 CMake 已用 find_package 可直接迁移）；
-  ② 等 10月8日新机恢复 WSL2 后在 WSL 里构建。服务器地址已在登录页预填 47.112.192.119:9000/9001，
-  安全组已放行。手工测试可先跑 `dual_client_push --send-many <对端手机号> <自己手机号> 20 "demo"`
-  造聊天记录（测试工具打印的双端手机号 + 密码 pass123 可直接用）
+- **真机 GUI 手工测试**：Windows 侧工具链已由会话自动装好（MSYS2 @ `C:\msys64`，Qt 6.11.2 +
+  protobuf 36.2 + gcc 16.2 + cmake/ninja，TUNA 镜像），客户端已构建并通过公网冒烟 7/7
+  （`client/cmake-build-win/`，windeployqt 已打好自包含运行时，可双击 im_client.exe）。
+  手测入口：双击 `client\cmake-build-win\im_client.exe`（登录页已预填 47.112.192.119:9000），
+  也可先跑 `dual_client_push --send-many <对端手机号> <自己手机号> 20 "demo"` 造聊天记录
+  （测试工具打印的双端手机号 + 密码 pass123 可直接用）。
+  重建命令（cmd）：`set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd
+  /c/Users/Mai/.zcode/workspace/default/im-system && cmake --build client/cmake-build-win"`
 - **录音真机验证**：QtMultimedia 录音链路已实现（WavRecorder→16k/单声道/16bit WAV→上传→
   服务端 ASR），无头服务器无麦克风只能验证编译与协议层（合成 WAV 已验通），真机需点「录音」
   说话后看气泡转写文本
@@ -105,7 +107,9 @@
   压测/刷屏时可见乱序）。建议 M10 给 message 表加 `seq BIGINT NOT NULL AUTO_INCREMENT,UNIQUE(seq)`
   并改为 `ORDER BY create_time DESC, seq DESC`（需 ODB 实体同步 + 重建服务端）
 - 小项：会话列表头像只在首次解析会话时拉取（对方换头像不实时刷新，重登后更新）；
-  ChatWindow 关闭只是 hide，重开不重拉历史（靠推送保鲜，WS 断连期间漏的消息要重登才补）
+  ChatWindow 关闭只是 hide，重开不重拉历史（靠推送保鲜，WS 断连期间漏的消息要重登才补）；
+  控制台测试程序在 Windows cmd 下中文显示乱码（printf UTF-8 vs 控制台 GBK，仅观感，
+  GUI 不受影响）
 
 ### M10 部署固化
 - 编写 Dockerfile（多阶段：build 环境 → 运行镜像）或直接二进制 + systemd

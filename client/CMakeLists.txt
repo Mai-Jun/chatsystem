@@ -11,9 +11,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network WebSockets Widgets Multimedia)
-find_package(Protobuf REQUIRED)  # CMAKE_PREFIX_PATH=/usr/local 保证 3.20.2
+# protobuf：优先 CONFIG 模式（Windows/MSYS2 的新版 protobuf 需要 abseil 传递链接，
+# 模块模式不会带上）；找不到配置文件再退回模块模式（服务器 /usr/local 的 3.20.2）
+set(protobuf_MODULE_COMPATIBLE ON CACHE BOOL "" FORCE)
+find_package(protobuf CONFIG QUIET)
+if(NOT protobuf_FOUND)
+  find_package(Protobuf REQUIRED)  # CMAKE_PREFIX_PATH=/usr/local 保证 3.20.2
+endif()
+# protobuf ≥3.21 的配置模式不再提供模块兼容变量，protoc 自行查找
+if(NOT Protobuf_PROTOC_EXECUTABLE)
+  find_program(Protobuf_PROTOC_EXECUTABLE protoc
+               HINTS "${protobuf_DIR}/../../../bin" "${Protobuf_DIR}/../../../bin"
+               REQUIRED)
+endif()
 
-message(STATUS "protobuf: ${Protobuf_VERSION}, protoc: ${Protobuf_PROTOC_EXECUTABLE}")
+message(STATUS "protobuf: ${Protobuf_VERSION}${protobuf_VERSION}, protoc: ${Protobuf_PROTOC_EXECUTABLE}")
 
 # ---- protobuf 生成（与 proto/ 同源定义）----
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../proto)

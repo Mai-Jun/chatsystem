@@ -77,3 +77,6 @@
 - **本机 PowerShell 改写 UTF-8 文件会转成 GBK**（PS5 `Set-Content` 用系统 ANSI 码页），后续 Edit 又按 GBK 保留，scp 到服务器后中文匹配/输出全废。`scripts/*.sh` 一律 ASCII-only；中文窗口名改用「窗口 id / ASCII 正则」匹配。客户端 .cc 均为 UTF-8 未受影响。
 - **ssh 远程命令中 `$var`/`$?` 不需转义**（本地 cmd 不展开 `$`；写成 `\$var` 远端收到字面量）。`pkill -f` 的模式若与 ssh 命令行文本重合会杀掉会话自身（bash -c cmdline 含该串），用 `pkill -x <comm>`（≤15 字符）或分两条命令。
 - **已知问题（M10）**：message 表仅秒级 create_time 且 `ORDER BY create_time` 无次序键，同一秒内消息顺序不稳定（压测可见乱序）；建议加 `seq BIGINT AUTO_INCREMENT` 次序键。
+- **Windows 侧构建（MSYS2，2026-10-07 实装实测）**：安装包 `msys2-base-x86_64-*.sfx.exe -y -oC:\`（TUNA `distrib/x86_64/`）→ 首次 `bash -lc` 跑自检 → 装 `qt6-base qt6-websockets qt6-multimedia protobuf cmake ninja gcc binutils gdb`（qt6 等包不含编译器，gcc 必须单装！pacman `-Syu` 升级 msys2-runtime 会自杀当前终端，属正常）。构建必须在 `MSYSTEM=MINGW64` 环境下 `bash -lc`（PATH 才含 /mingw64/bin）。
+- **MSYS2 的 protobuf 36 必须用 CONFIG 模式**：新版 protobuf 依赖 abseil（absl config 随 protobuf 包捆绑在 `lib/cmake/absl`），`find_package(Protobuf)` 模块模式只链 libprotobuf 不带 absl → 大量 `absl::lts_*` 未定义引用；且 36 已删 protobuf-module.cmake 的 protoc 兼容变量，`Protobuf_PROTOC_EXECUTABLE` 要自行 `find_program`。客户端 CMakeLists 已改成「CONFIG 优先 + 模块回退 + find_program 兜底」，并需 `-DCMAKE_CXX_STANDARD=20`（protobuf 36 的要求，覆盖工程的 17）。
+- **MinGW 构建的 Qt 程序分发**：`windeployqt --release im_client.exe` 一步到位（Qt DLL + platforms/audio/tls 插件 + ffmpeg 后端，约 67MB）；cmd 控制台跑测试程序中文乱码是控制台码页（GBK）问题，仅观感。
