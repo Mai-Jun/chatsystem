@@ -537,7 +537,39 @@ int main(int argc, char* argv[]) {
     check(back == payload, "B 下载内容与上传字节完全一致");
   }
 
-  // ---- ⑧ 语音消息链路：WAV 上传 → 发送 → 服务端 ASR → 推送带 asr_text ----
+  // ---- ⑧ 图片消息链路（客户端气泡按 IMAGE 类型内嵌渲染）----
+  log_b.clear();
+  {
+    // 1x1 PNG（base64 内嵌，避免测试依赖外部图片文件）
+    const QByteArray png = QByteArray::fromBase64(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5"
+        "ErkJggg==");
+    QString img_id;
+    check(upload_sync(client_a, QStringLiteral("m9_pixel.png"), png, &img_id, &err) &&
+              !img_id.isEmpty(),
+          "A 上传图片");
+
+    MsgTransmitReq req;
+    req.set_chat_session_id(session_id);
+    req.mutable_content()->set_type(MESSAGE_TYPE_IMAGE);
+    req.mutable_content()->set_file_id(img_id.toStdString());
+    req.mutable_content()->set_file_name("m9_pixel.png");
+    req.mutable_content()->set_file_size(png.size());
+    MsgTransmitResp resp;
+    check(sync_call(client_a, REQ_TYPE_TRANSMIT_MESSAGE, req, &resp, &err) && resp.success(),
+          "A 发送图片消息");
+
+    MessageInfo got;
+    check(wait_for([&]() { return log_b.find_by_file_id(img_id.toStdString(), &got); }, 10000),
+          "B 实时收到图片消息推送");
+    check(got.type() == MESSAGE_TYPE_IMAGE, "图片消息类型正确");
+
+    QByteArray back;
+    check(download_sync(client_b, img_id, &back, &err) && back == png,
+          "B 下载图片与上传字节一致");
+  }
+
+  // ---- ⑨ 语音消息链路：WAV 上传 → 发送 → 服务端 ASR → 推送带 asr_text ----
   log_b.clear();
   {
     const QByteArray wav = make_test_wav(1200);  // 1.2s 440Hz
@@ -568,7 +600,7 @@ int main(int argc, char* argv[]) {
           "B 下载语音内容与上传一致");
   }
 
-  // ---- ⑨ 会话历史应包含 4 条消息（2 文本 + 1 文件 + 1 语音）----
+  // ---- ⑩ 会话历史应包含 5 条消息（2 文本 + 1 文件 + 1 图片 + 1 语音）----
   {
     GetHistoryReq req;
     req.set_chat_session_id(session_id);
@@ -576,8 +608,8 @@ int main(int argc, char* argv[]) {
     req.set_limit(50);
     GetHistoryResp resp;
     bool ok = sync_call(client_b, REQ_TYPE_GET_HISTORY, req, &resp, &err) && resp.success();
-    check(ok && resp.messages_size() == 4,
-          QString("历史消息数 = 4（实际 %1）").arg(resp.messages_size()).toStdString());
+    check(ok && resp.messages_size() == 5,
+          QString("历史消息数 = 5（实际 %1）").arg(resp.messages_size()).toStdString());
   }
 
   printf("\n=== 双客户端推送验证: %d 项失败 ===\n", g_failures);

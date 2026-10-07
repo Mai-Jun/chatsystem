@@ -1,21 +1,27 @@
 #!/bin/bash
-# M9 GUI 无头验证：Xvfb + openbox + im_client + xdotool 驱动 + 截图
-# 用法: bash gui_test.sh <阶段> [手机号] [密码] [对端手机号]
-#   1 = 启动并截登录页
-#   2 = 登录并截主窗口
-#   3 = 打开会话并截聊天窗
-#   4 = 在聊天窗发一条文本
-#   5 = 对端发消息（聊天窗存在）
-#   6 = 主窗口聚焦后对端发消息（未读计数）
-#   7 = 关掉聊天窗后对端发消息（未读计数，不依赖焦点）
-#   8 = 重新打开会话（未读清零）
-#   9 = 对端连发 55 条（分页压测）
-#  10 = 打开会话看首屏分页状态
-#  11 = 点「加载更多」翻页
+# M9 headless GUI verification: Xvfb + openbox + im_client + xdotool + screenshots
+# Usage: bash gui_test.sh <stage> [phone] [password] [peer_phone]
+#   1  = launch, screenshot login page
+#   2  = login (skipped if a saved token auto-logs in), screenshot main window
+#   3  = open a session, screenshot chat window
+#   4  = send a text message from the chat window
+#   5  = peer sends while chat window exists (live push)
+#   6  = focus main window, peer sends (unread badge)
+#   7  = close chat window, peer sends (unread badge, focus-independent)
+#   8  = reopen session (unread clears)
+#   9  = peer bursts 55 messages (pagination setup)
+#  10  = close + reopen chat window (first page state)
+#  11  = click "load more"
+#  12  = restart client, fresh chat window first page (50 msgs, button enabled)
+#  13  = click "load more" on the fresh window
+#  14  = wipe local token, restart -> back to login page
 #
-# 说明：无窗口管理器时 xdotool windowactivate 无效（isActiveWindow 恒真），
-# 焦点相关用例必须先起 openbox；窗口坐标一律按窗口几何 + 偏移计算，
-# 避免被 WM 的标题栏/最大化改变位置后失效。
+# Notes:
+#  - Without a window manager xdotool windowactivate does nothing and Qt's
+#    isActiveWindow() stays true, so focus-dependent cases need openbox.
+#  - Widgets are addressed as window geometry + offset; offsets calibrated
+#    under openbox (xdotool Y and the client-area origin differ by a constant).
+#  - ASCII only: window titles are Chinese, matched indirectly via window ids.
 set -u
 export DISPLAY=:99
 SHOTS=/root/gui_shots
@@ -27,9 +33,44 @@ PASSWORD="${3:-pass123}"
 PEER="${4:-18353589846}"
 
 shot() { import -window root "$SHOTS/$1.png"; echo "[shot] $1"; }
+fail() { echo "[fail] $1" >&2; exit 1; }
 
-# 按窗口名取几何到 X/Y/WIDTH/HEIGHT
-geom() { eval "$(xdotool search --name "$1" getwindowgeometry --shell %@ 2>/dev/null)"; }
+# geometry of a window id -> X/Y/WIDTH/HEIGHT
+geom_id() { eval "$(xdotool getwindowgeometry --shell "$1")"; }
+
+main_win() {
+  local id
+  id=$(xdotool search --onlyvisible --name '^IM - ' 2>/dev/null | head -1)
+  [ -n "$id" ] || fail "main window not found"
+  echo "$id"
+}
+
+# chat window = any other visible im_client window than the main one
+chat_win() {
+  local main_id pid id
+  main_id=$(main_win) || return 1
+  pid=$(pgrep -x im_client | head -1)
+  for id in $(xdotool search --onlyvisible --pid "$pid" 2>/dev/null); do
+    if [ "$id" != "$main_id" ]; then echo "$id"; return 0; fi
+  done
+  return 1
+}
+
+login_win() {
+  local id
+  id=$(xdotool search --onlyvisible --name 'IM .*/' 2>/dev/null | head -1)
+  # login window title contains Chinese; fall back to: visible, not main, not chat
+  if [ -z "$id" ]; then
+    local main_id pid
+    main_id=$(main_win 2>/dev/null) || main_id=""
+    pid=$(pgrep -x im_client | head -1)
+    for id in $(xdotool search --onlyvisible --pid "$pid" 2>/dev/null); do
+      [ "$id" != "$main_id" ] && { echo "$id"; return 0; }
+    done
+    return 1
+  fi
+  echo "$id"
+}
 
 start_app() {
   pkill -x im_client 2>/dev/null
@@ -48,14 +89,20 @@ start_app() {
 }
 
 do_login() {
-  geom "IM 即时通讯"
-  xdotool windowactivate --sync "$(xdotool search --name 'IM 即时通讯' | head -1)" 2>/dev/null
+  local lid
+  if lid=$(main_win 2>/dev/null); then
+    echo "[login] token persisted, already logged in - skip"
+    return 0
+  fi
+  lid=$(login_win) || fail "no login window"
+  geom_id "$lid"
+  xdotool windowactivate --sync "$lid" 2>/dev/null
   sleep 1
-  xdotool mousemove $((X + 200)) $((Y + 56)) click 1   # 手机号输入框
+  xdotool mousemove $((X + 200)) $((Y + 56)) click 1   # phone field
   sleep 1
   xdotool type --delay 60 "$PHONE"
   sleep 1
-  xdotool mousemove $((X + 200)) $((Y + 85)) click 1   # 密码输入框
+  xdotool mousemove $((X + 200)) $((Y + 85)) click 1   # password field
   sleep 1
   xdotool type --delay 60 "$PASSWORD"
   sleep 1
@@ -63,9 +110,11 @@ do_login() {
   sleep 6
 }
 
-# 双击会话列表首项打开聊天窗
+# double-click first item of the session list
 open_session() {
-  geom "IM -"
+  local mid
+  mid=$(main_win) || fail "no main window"
+  geom_id "$mid"
   xdotool mousemove $((X + 200)) $((Y + 57)) click --repeat 2 --delay 120 1
   sleep 5
 }
@@ -83,9 +132,8 @@ case "${1:-1}" in
   ;;
 2)
   do_login
-  echo "--- windows ---"
-  xdotool search --name "" getwindowname %@ 2>/dev/null | grep -v '^$' | head -10
-  geom "IM -"
+  mid=$(main_win) || fail "no main window after login"
+  geom_id "$mid"
   echo "main window: X=$X Y=$Y ${WIDTH}x${HEIGHT}"
   echo "--- app log ---"
   cat /root/im_client_gui.log
@@ -93,15 +141,15 @@ case "${1:-1}" in
   ;;
 3)
   open_session
-  echo "--- windows ---"
-  xdotool search --name "" getwindowname %@ 2>/dev/null | grep -v '^$' | head -10
-  geom "会话 -"
+  cid=$(chat_win) || fail "no chat window"
+  geom_id "$cid"
   echo "chat window: X=$X Y=$Y ${WIDTH}x${HEIGHT}"
   shot 3_chat
   ;;
 4)
-  geom "会话 -"
-  xdotool mousemove $((X + 350)) $((Y + 598)) click 1   # 输入框
+  cid=$(chat_win) || fail "no chat window"
+  geom_id "$cid"
+  xdotool mousemove $((X + 350)) $((Y + 578)) click 1   # input field
   sleep 1
   xdotool type --delay 60 "M9-GUI-$(date +%H%M%S)"
   sleep 1
@@ -115,18 +163,18 @@ case "${1:-1}" in
   shot 5_live
   ;;
 6)
-  geom "IM -"
-  xdotool windowactivate --sync "$(xdotool search --name 'IM -' | head -1)" 2>/dev/null
+  mid=$(main_win) || fail "no main window"
+  xdotool windowactivate --sync "$mid" 2>/dev/null
   sleep 2
   peer_send "UNREAD-$(date +%H%M%S)"
   sleep 4
   shot 6_unread
   ;;
 7)
-  geom "会话 -"
-  xdotool windowactivate --sync "$(xdotool search --name '会话 -' | head -1)" 2>/dev/null
+  cid=$(chat_win) || fail "no chat window"
+  xdotool windowactivate --sync "$cid" 2>/dev/null
   sleep 1
-  xdotool key Escape          # 关掉聊天窗：此后推送应计入未读
+  xdotool key Escape          # close chat window: pushes must count as unread
   sleep 2
   echo "--- windows after close ---"
   xdotool search --name "" getwindowname %@ 2>/dev/null | grep -v '^$' | head -5
@@ -136,8 +184,6 @@ case "${1:-1}" in
   ;;
 8)
   open_session
-  echo "--- windows ---"
-  xdotool search --name "" getwindowname %@ 2>/dev/null | grep -v '^$' | head -5
   shot 8_reopen
   ;;
 9)
@@ -145,18 +191,42 @@ case "${1:-1}" in
   sleep 3
   ;;
 10)
-  # 关掉旧聊天窗再重开，确保走首屏分页
-  geom "会话 -" && xdotool key Escape && sleep 2
+  cid=$(chat_win 2>/dev/null) && { xdotool windowactivate --sync "$cid"; xdotool key Escape; sleep 2; }
   open_session
-  geom "会话 -"
+  cid=$(chat_win) || fail "no chat window"
+  geom_id "$cid"
   echo "chat window: X=$X Y=$Y ${WIDTH}x${HEIGHT}"
   shot 10_page1
   ;;
 11)
-  geom "会话 -"
-  xdotool mousemove $((X + 53)) $((Y + 24)) click 1   # 「加载更多」
-  sleep 5
+  cid=$(chat_win) || fail "no chat window"
+  geom_id "$cid"
+  xdotool mousemove $((X + 52)) $((Y + 5)) click 1    # "load more"
+  sleep 6
   shot 11_page2
+  ;;
+12)
+  start_app
+  do_login
+  open_session
+  cid=$(chat_win) || fail "no chat window"
+  geom_id "$cid"
+  echo "chat window: X=$X Y=$Y ${WIDTH}x${HEIGHT}"
+  shot 12_page1_fresh
+  ;;
+13)
+  cid=$(chat_win) || fail "no chat window"
+  geom_id "$cid"
+  xdotool mousemove $((X + 52)) $((Y + 5)) click 1    # "load more"
+  sleep 6
+  shot 13_page2_fresh
+  ;;
+14)
+  rm -f "$HOME/.config/im-system/im-client.conf"      # wipe token -> login page
+  start_app
+  echo "--- windows ---"
+  xdotool search --name "" getwindowname %@ 2>/dev/null | grep -v '^$' | head -5
+  shot 14_login_fresh
   ;;
 *)
   echo "unknown stage"
