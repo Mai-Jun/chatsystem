@@ -381,6 +381,29 @@ int run_send_image_mode(const QString& host, quint16 http_port, quint16 ws_port,
   return ok ? 0 : 1;
 }
 
+// 辅助模式：给账号设置头像（1x1 PNG，GUI 里应显示为 28x28 色块）
+//   dual_client_push <host> <http> <ws> --set-avatar <phone>
+int run_set_avatar_mode(const QString& host, quint16 http_port, quint16 ws_port,
+                        const std::string& phone) {
+  GatewayClient client(host, http_port, host, ws_port);
+  Account acc{phone, "", QString(), &client};
+  if (!login_only(acc)) return 1;
+
+  const QByteArray png = make_test_png();
+  SetUserAvatarReq req;
+  req.set_user_id(acc.uid);
+  req.mutable_avatar()->set_file_name("avatar.png");
+  req.mutable_avatar()->set_file_size(png.size());
+  req.mutable_avatar()->set_file_content(png.constData(), static_cast<size_t>(png.size()));
+  SetUserAvatarResp resp;
+  QString err;
+  const bool ok =
+      sync_call(client, REQ_TYPE_SET_USER_AVATAR, req, &resp, &err) && resp.success();
+  printf("set-avatar: user=%s avatar_file_id=%s ok=%d\n", acc.uid.c_str(),
+         resp.avatar_file_id().c_str(), ok ? 1 : 0);
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -417,6 +440,15 @@ int main(int argc, char* argv[]) {
     }
     return run_send_image_mode(host, static_cast<quint16>(http_port),
                                static_cast<quint16>(ws_port), argv[5], argv[6]);
+  }
+  // 辅助模式：--set-avatar <phone>
+  if (argc > 4 && std::string(argv[4]) == "--set-avatar") {
+    if (argc < 6) {
+      printf("用法: dual_client_push <host> <http> <ws> --set-avatar <手机号>\n");
+      return 2;
+    }
+    return run_set_avatar_mode(host, static_cast<quint16>(http_port),
+                               static_cast<quint16>(ws_port), argv[5]);
   }
 
   GatewayClient client_a(host, static_cast<quint16>(http_port), host,
