@@ -330,6 +330,57 @@ int run_send_many_mode(const QString& host, quint16 http_port, quint16 ws_port,
   return ok_count == count ? 0 : 1;
 }
 
+// 1x1 PNG（base64 内嵌，避免测试依赖外部图片文件）
+QByteArray make_test_png() {
+  return QByteArray::fromBase64(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5"
+      "ErkJggg==");
+}
+
+// 辅助模式：以 sender 身份给 peer 发一条图片消息（用于 GUI 验证图片内嵌渲染）
+//   dual_client_push <host> <http> <ws> --send-image <sender_phone> <peer_phone>
+int run_send_image_mode(const QString& host, quint16 http_port, quint16 ws_port,
+                        const std::string& sender_phone, const std::string& peer_phone) {
+  GatewayClient client(host, http_port, host, ws_port);
+  Account sender{sender_phone, "", QString(), &client};
+  if (!login_only(sender)) return 1;
+
+  QString err;
+  SearchUserReq search;
+  search.set_user_id(sender.uid);
+  search.set_keyword(peer_phone);
+  SearchUserResp search_resp;
+  if (!sync_call(client, REQ_TYPE_SEARCH_USER, search, &search_resp, &err) ||
+      search_resp.result_size() == 0) {
+    printf("找不到对端 %s\n", peer_phone.c_str());
+    return 1;
+  }
+  const std::string session_id =
+      find_session_with(client, sender.uid, search_resp.result(0).user_id());
+  if (session_id.empty()) {
+    printf("找不到与 %s 的会话\n", peer_phone.c_str());
+    return 1;
+  }
+
+  const QByteArray png = make_test_png();
+  QString file_id;
+  if (!upload_sync(client, QStringLiteral("gui_pixel.png"), png, &file_id, &err)) {
+    printf("上传失败: %s\n", qPrintable(err));
+    return 1;
+  }
+  MsgTransmitReq req;
+  req.set_chat_session_id(session_id);
+  req.mutable_content()->set_type(MESSAGE_TYPE_IMAGE);
+  req.mutable_content()->set_file_id(file_id.toStdString());
+  req.mutable_content()->set_file_name("gui_pixel.png");
+  req.mutable_content()->set_file_size(png.size());
+  MsgTransmitResp resp;
+  const bool ok = sync_call(client, REQ_TYPE_TRANSMIT_MESSAGE, req, &resp, &err) && resp.success();
+  printf("send-image: session=%s file_id=%s ok=%d\n", session_id.c_str(), qPrintable(file_id),
+         ok ? 1 : 0);
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -357,6 +408,15 @@ int main(int argc, char* argv[]) {
     return run_send_many_mode(host, static_cast<quint16>(http_port),
                               static_cast<quint16>(ws_port), argv[5], argv[6], atoi(argv[7]),
                               argv[8]);
+  }
+  // 辅助模式：--send-image <sender_phone> <peer_phone>
+  if (argc > 4 && std::string(argv[4]) == "--send-image") {
+    if (argc < 7) {
+      printf("用法: dual_client_push <host> <http> <ws> --send-image <发送者> <对端>\n");
+      return 2;
+    }
+    return run_send_image_mode(host, static_cast<quint16>(http_port),
+                               static_cast<quint16>(ws_port), argv[5], argv[6]);
   }
 
   GatewayClient client_a(host, static_cast<quint16>(http_port), host,

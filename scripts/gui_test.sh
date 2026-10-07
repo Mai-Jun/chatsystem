@@ -98,11 +98,11 @@ do_login() {
   geom_id "$lid"
   xdotool windowactivate --sync "$lid" 2>/dev/null
   sleep 1
-  xdotool mousemove $((X + 200)) $((Y + 56)) click 1   # phone field
+  xdotool mousemove $((X + 207)) $((Y + 36)) click 1   # phone field
   sleep 1
   xdotool type --delay 60 "$PHONE"
   sleep 1
-  xdotool mousemove $((X + 200)) $((Y + 85)) click 1   # password field
+  xdotool mousemove $((X + 207)) $((Y + 65)) click 1   # password field
   sleep 1
   xdotool type --delay 60 "$PASSWORD"
   sleep 1
@@ -227,6 +227,17 @@ case "${1:-1}" in
   echo "--- windows ---"
   xdotool search --name "" getwindowname %@ 2>/dev/null | grep -v '^$' | head -5
   shot 14_login_fresh
+  ;;
+15)
+  cid=$(chat_win) || fail "no chat window"
+  geom_id "$cid"
+  # scroll the message view to the bottom via the vertical scrollbar trough
+  xdotool mousemove $((X + 542)) $((Y + 540)) click --repeat 4 --delay 300 1
+  sleep 1
+  xdotool mousemove $((X + 280)) $((Y + 300)) click 1
+  xdotool click --repeat 40 5                          # wheel down as a fallback
+  sleep 3
+  shot 15_image
   ;;
 *)
   echo "unknown stage"
