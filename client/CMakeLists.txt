@@ -1,5 +1,5 @@
 # 独立 CMake 工程：Qt6 桌面客户端（与服务器端构建解耦，不依赖 brpc/ODB）
-# 依赖：Qt6(Widgets/Network/WebSockets) + protobuf(libprotobuf + protoc)
+# 依赖：Qt6(Widgets/Network/WebSockets/Multimedia) + protobuf(libprotobuf + protoc)
 # 服务器编译验证（protobuf 须用 /usr/local 的 3.20.2，避开 apt 3.12.4）：
 #   cmake -S client -B client/build-server -DCMAKE_PREFIX_PATH=/usr/local
 #   cmake --build client/build-server -j1
@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Network WebSockets Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Network WebSockets Widgets Multimedia)
 find_package(Protobuf REQUIRED)  # CMAKE_PREFIX_PATH=/usr/local 保证 3.20.2
 
 message(STATUS "protobuf: ${Protobuf_VERSION}, protoc: ${Protobuf_PROTOC_EXECUTABLE}")
@@ -44,6 +44,12 @@ target_link_libraries(im_client_protocol PUBLIC
   im_client_proto
   Qt6::Core Qt6::Network Qt6::WebSockets)
 
+# ---- 媒体层（录音，仅主程序使用；冒烟测试不链）----
+add_library(im_client_media STATIC
+  src/media/wav_recorder.cc)
+target_include_directories(im_client_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(im_client_media PUBLIC Qt6::Core Qt6::Multimedia)
+
 # ---- 主程序 ----
 add_executable(im_client
   src/main.cc
@@ -52,8 +58,13 @@ add_executable(im_client
   src/ui/chat_window.cc)
 target_link_libraries(im_client PRIVATE
   im_client_protocol
+  im_client_media
   Qt6::Widgets)
 
 # ---- 协议冒烟测试（无 GUI，服务器上对真实网关运行）----
 add_executable(client_smoke test/protocol_smoke.cc)
 target_link_libraries(client_smoke PRIVATE im_client_protocol Qt6::Core)
+
+# ---- 双客户端实时推送测试（M7 遗留项：A/B 互发 + WS 推送 + 离线补历史）----
+add_executable(dual_client_push test/dual_client_push.cc)
+target_link_libraries(dual_client_push PRIVATE im_client_protocol Qt6::Core)

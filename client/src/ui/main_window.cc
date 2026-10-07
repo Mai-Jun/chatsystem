@@ -9,6 +9,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPushButton>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -374,8 +375,16 @@ void MainWindow::on_push(int type, const QByteArray& body) {
     im::MessageInfo msg;
     if (!msg.ParseFromArray(body.constData(), body.size())) return;
     const QString sid = QString::fromStdString(msg.chat_session_id());
-    // 转发给已打开的聊天窗
-    if (auto* w = chat_windows_.value(sid)) w->on_message_push(body);
+    const bool from_me = QString::fromStdString(msg.sender_id()) ==
+                         QString::fromStdString(me_.user_id());
+    ChatWindow* w = chat_windows_.value(sid);
+    // 先判聚焦再转发：聊天窗收到消息会 emit seen 清零未读，顺序反了会立刻 +1
+    const bool focused = w != nullptr && w->isActiveWindow();
+    if (w != nullptr) w->on_message_push(body);
+    if (!from_me && !focused) {
+      unread_[sid] = unread_.value(sid, 0) + 1;
+      update_session_item(sid);
+    }
     refresh_sessions();
   } else if (type == PUSH_TYPE_FRIEND_APPLY || type == PUSH_TYPE_GROUP_EVENT) {
     refresh_pending_count();
@@ -392,7 +401,7 @@ QString MainWindow::display_name_for(const im::ChatSessionInfo& s) {
     session_names_[sid] = name;
     return name;
   }
-  // 单聊：会话名为空，取对方昵称（GetSessionMember）
+  // 单聊：会话名为空，取对方昵称 + 头像（GetSessionMember）
   GetSessionMemberReq req;
   req.set_chat_session_id(s.chat_session_id());
   client_->call_p<GetSessionMemberResp>(
@@ -404,14 +413,12 @@ QString MainWindow::display_name_for(const im::ChatSessionInfo& s) {
             continue;
           }
           session_peers_[sid] = QString::fromStdString(m.user_id());
-          const QString name = QString::fromStdString(
+          session_names_[sid] = QString::fromStdString(
               m.nickname().empty() ? m.user_id() : m.nickname());
-          session_names_[sid] = name;
-          // 更新列表中的展示
-          for (int i = 0; i < session_list_->count(); ++i) {
-            auto* item = session_list_->item(i);
-            if (item->data(Qt::UserRole).toString() == sid) item->setText(name);
-          }
+          session_avatars_[sid] = QString::fromStdString(m.avatar_file_id());
+          ensure_avatar(session_avatars_[sid]);
+          update_session_item(sid);
+          apply_avatars();
           break;
         }
       });
@@ -429,15 +436,68 @@ void MainWindow::refresh_sessions() {
           return;
         }
         sessions_.clear();
+        session_items_.clear();
         session_list_->clear();
         for (const auto& s : resp.session_list()) {
           const QString sid = QString::fromStdString(s.chat_session_id());
           sessions_[sid] = s;
-          const QString name = display_name_for(s);
-          auto* item = new QListWidgetItem(name, session_list_);
+          display_name_for(s);  // 异步补全显示名/头像，先建项
+          auto* item = new QListWidgetItem(session_list_);
           item->setData(Qt::UserRole, sid);
+          session_items_[sid] = item;
+          update_session_item(sid);
+          apply_avatars();
         }
       });
+}
+
+void MainWindow::update_session_item(const QString& session_id) {
+  auto* item = session_items_.value(session_id);
+  if (item == nullptr) return;
+  const QString name = session_names_.value(
+      session_id, sessions_.value(session_id).type() == SESSION_TYPE_GROUP
+                        ? QString::fromStdString(sessions_.value(session_id).session_name())
+                        : session_id);
+  const int unread = unread_.value(session_id, 0);
+  item->setText(unread > 0 ? QString("%1  (%2)").arg(name).arg(unread) : name);
+}
+
+void MainWindow::on_session_seen(const QString& session_id) {
+  if (unread_.value(session_id, 0) == 0) return;
+  unread_[session_id] = 0;
+  update_session_item(session_id);
+}
+
+void MainWindow::ensure_avatar(const QString& file_id) {
+  if (file_id.isEmpty() || avatar_icons_.contains(file_id) || avatar_pending_.contains(file_id)) {
+    return;
+  }
+  avatar_pending_.insert(file_id);
+  client_->download_file(
+      file_id, [this, file_id](bool ok, const QString&, const QByteArray& data, const QString&) {
+        avatar_pending_.remove(file_id);
+        if (!ok || data.isEmpty()) return;
+        QPixmap pm;
+        if (!pm.loadFromData(data)) return;
+        avatar_icons_[file_id] = QIcon(
+            pm.scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        apply_avatars();
+      });
+}
+
+void MainWindow::apply_avatars() {
+  for (auto it = session_avatars_.constBegin(); it != session_avatars_.constEnd(); ++it) {
+    auto* item = session_items_.value(it.key());
+    if (item == nullptr) continue;
+    const auto icon = avatar_icons_.constFind(it.value());
+    if (icon != avatar_icons_.constEnd()) item->setIcon(*icon);
+  }
+  for (int i = 0; i < friend_list_->count(); ++i) {
+    auto* item = friend_list_->item(i);
+    const QString fid = item->data(Qt::UserRole + 1).toString();
+    const auto icon = avatar_icons_.constFind(fid);
+    if (icon != avatar_icons_.constEnd()) item->setIcon(*icon);
+  }
 }
 
 void MainWindow::refresh_friends() {
@@ -453,7 +513,10 @@ void MainWindow::refresh_friends() {
           auto* item =
               new QListWidgetItem(QString::fromStdString(u.nickname()), friend_list_);
           item->setData(Qt::UserRole, QString::fromStdString(u.user_id()));
+          item->setData(Qt::UserRole + 1, QString::fromStdString(u.avatar_file_id()));
+          ensure_avatar(QString::fromStdString(u.avatar_file_id()));
         }
+        apply_avatars();
       });
 }
 
@@ -472,6 +535,7 @@ ChatWindow* MainWindow::chat_window_for(const QString& session_id, const QString
   if (auto* w = chat_windows_.value(session_id)) return w;
   auto* w = new ChatWindow(client_, session_id, display_name,
                            QString::fromStdString(me_.user_id()));
+  connect(w, &ChatWindow::seen, this, &MainWindow::on_session_seen);
   connect(w, &QObject::destroyed, this,
           [this, session_id]() { chat_windows_.remove(session_id); });
   chat_windows_[session_id] = w;
@@ -481,10 +545,11 @@ ChatWindow* MainWindow::chat_window_for(const QString& session_id, const QString
 void MainWindow::open_session(QListWidgetItem* item) {
   const QString sid = item->data(Qt::UserRole).toString();
   if (sid.isEmpty()) return;
-  ChatWindow* w = chat_window_for(sid, item->text());
+  ChatWindow* w = chat_window_for(sid, session_names_.value(sid, item->text()));
   w->show();
   w->raise();
   w->activateWindow();
+  on_session_seen(sid);  // 打开即已读
 }
 
 }  // namespace im

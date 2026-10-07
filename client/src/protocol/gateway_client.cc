@@ -7,6 +7,8 @@
 #include <QUuid>
 #include <QUrl>
 
+#include "file.pb.h"
+
 namespace im {
 
 GatewayClient::GatewayClient(const QString& http_host, quint16 http_port, const QString& ws_host,
@@ -64,6 +66,36 @@ void GatewayClient::call(im::RequestType type, const std::string& body, RespCall
     }
     cb(resp);
   });
+}
+
+void GatewayClient::upload_file(const QString& file_name, const QByteArray& content,
+                                UploadCallback on_done) {
+  PutSingleReq req;
+  auto* data = req.mutable_data();
+  data->set_file_name(file_name.toStdString());
+  data->set_file_size(content.size());
+  data->set_file_content(content.constData(), static_cast<size_t>(content.size()));
+  call_p<PutSingleResp>(
+      REQ_TYPE_PUT_SINGLE_FILE, req,
+      [cb = std::move(on_done)](bool ok, const QString& errmsg, const PutSingleResp& resp) {
+        if (ok && resp.file_id().empty()) {
+          cb(false, QStringLiteral("服务端未返回 file_id"), QString());
+          return;
+        }
+        cb(ok, errmsg, QString::fromStdString(resp.file_id()));
+      });
+}
+
+void GatewayClient::download_file(const QString& file_id, DownloadCallback on_done) {
+  GetSingleReq req;
+  req.set_file_id(file_id.toStdString());
+  call_p<GetSingleResp>(
+      REQ_TYPE_GET_SINGLE_FILE, req,
+      [cb = std::move(on_done)](bool ok, const QString& errmsg, const GetSingleResp& resp) {
+        const std::string& raw = resp.data().file_content();
+        cb(ok, errmsg, QByteArray(raw.data(), static_cast<int>(raw.size())),
+           QString::fromStdString(resp.data().file_name()));
+      });
 }
 
 void GatewayClient::connect_push() {

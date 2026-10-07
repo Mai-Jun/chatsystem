@@ -1,5 +1,7 @@
 #pragma once
+#include <QByteArray>
 #include <QObject>
+#include <QString>
 #include <QWebSocket>
 
 #include <functional>
@@ -56,6 +58,16 @@ class GatewayClient : public QObject {
   void connect_push();
   void disconnect_push();
   bool push_connected() const { return ws_ready_; }
+
+  // ---- 文件上传/下载（头像/图片/文件/语音共用，经网关转文件子服务）----
+  // 上传：成功回调服务端生成的 file_id；失败 errmsg 非空
+  using UploadCallback =
+      std::function<void(bool ok, const QString& errmsg, const QString& file_id)>;
+  // 下载：成功回调文件内容与服务端记录的文件名
+  using DownloadCallback = std::function<void(bool ok, const QString& errmsg,
+                                              const QByteArray& content, const QString& file_name)>;
+  void upload_file(const QString& file_name, const QByteArray& content, UploadCallback on_done);
+  void download_file(const QString& file_id, DownloadCallback on_done);
 
  signals:
   void pushConnected(bool ok, const QString& errmsg);
