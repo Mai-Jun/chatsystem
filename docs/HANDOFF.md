@@ -4,7 +4,7 @@
 
 ## 一、30 秒了解现状
 
-**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**，服务器上 7 个子服务正在运行。**M9 Qt 客户端功能已完成（2026-10-07 第二轮）**：文本/图片/文件/语音四类消息、未读计数、历史分页、头像全部实现；协议冒烟 7/7、双客户端推送+四类消息 40/40、无头 GUI（Xvfb+openbox+xdotool）逐项截图验证通过。**仅剩真机手工测试**（Windows 侧 Qt 未装，见第五节）。
+**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**，服务器上 7 个子服务正在运行。**M9 Qt 客户端已完成并验证（2026-10-07 三轮迭代）**：文本/图片/文件/语音四类消息、未读计数、历史分页、头像、账号密码+验证码双登录、微信风格界面全部就绪；协议冒烟 8/8、双客户端 40/40、无头 GUI 截图逐项验证。**Windows 客户端已构建（MSYS2+Qt 6.11）并通过公网冒烟，已交付用户手工测试**。剩余：真机手测收尾（进行中）→ 录音真机验证 → **M10 部署固化**（含 ES 上服务器）。
 
 剩余：**M9 Qt 桌面客户端（剩余部分）→ M10 部署固化**（含 ES 上服务器）。
 
@@ -25,6 +25,7 @@
 | GitHub | `Mai-Jun/chatsystem`（私有）。**PAT 已由用户记录在项目内两处（均不入 git 仓库）**：① 本地与服务器的 origin remote URL 已内置 PAT——`git push/fetch origin` 直接可用；② 本地明文备份 `docs/github_pat.local`（被 `.gitignore` 的 `*.local` 规则忽略）。**raw PAT 不能写进任何 git 跟踪文件**：GitHub push protection 会拒绝携带密钥的推送（2026-10-07 实测）。新机器首次 clone：用 ②中的 PAT 或向用户索取；PAT 失效（过期/吊销/转公开仓库被吊销）时更新两端 remote：`git remote set-url origin https://<PAT>@github.com/Mai-Jun/chatsystem.git` |
 | 本地工作区 | `C:\Users\Mai\.zcode\workspace\default\im-system`（Windows；仅编辑与 git，**不能编译**——WSL/VBox 因本机系统损伤不可用，详见 migration.md） |
 | 便携 git / plink | `C:\PortableGit\`、`C:\WSL\plink.exe`（Windows 侧操作服务器用） |
+| **Windows 客户端（新装 2026-10-07）** | 工具链 MSYS2 @ `C:\msys64`（TUNA 源：Qt 6.11.2 base/websockets/multimedia + protobuf 36.2 + gcc 16.2 + cmake/ninja）；产物 `client/cmake-build-win/`（windeployqt 已部署，`im_client.exe` 可直接双击）；重建/部署命令见第六节 |
 
 **重要**：GitHub 推送受本地网络波动影响时好时坏。**服务器 `/root/chatsystem` 是当前最完整的副本**；网络不畅时用 git bundle 走 scp 同步（见第六节）。
 
@@ -41,16 +42,18 @@
 | M6 消息存储 | ✅ | E2E：历史分页 / 关键字搜索（ES 暂缓→LIKE 降级） |
 | M7 消息转发+MQ | ✅ | E2E：单聊+群消息转发/持久化/MQ 广播投递 |
 | M8 语音子服务 | ✅ | E2E 17/17（新增 4 项语音链路）；message 表语音消息 asr_text 有值 |
-| M9 Qt 客户端 | ✅（功能完成，剩真机手测） | client_smoke 7/7；dual_client_push 40/40（双端注册加好友→文本/文件/图片/语音→WS 推送→离线补历史）；Xvfb 无头 GUI 16 项截图（见第八节） |
+| M9 Qt 客户端 | ✅（功能完成，真机手测中） | client_smoke 8/8（含短信验证码登录）；dual_client_push 40/40（双端注册加好友→文本/文件/图片/语音→WS 推送→离线补历史）；Xvfb 无头 GUI 截图逐项验证（三轮）；Windows 版公网冒烟 7/7 |
 
 验收工具（服务器上可随时重跑）：
 - `ctest --test-dir build --output-on-failure`（单元+集成测试）
 - `./build/test/gateway_sim_client`（M4 网关 8 步链路）
 - `./build/test/e2e_friend_msg`（M5~M8 十七项链路，语音步骤需 speech_server 在线）
-- `./client/build-server/client_smoke 127.0.0.1 9000 9001`（M9 协议冒烟 7 项）
+- `./client/build-server/client_smoke 127.0.0.1 9000 9001`（M9 协议冒烟 8 项，含短信验证码登录）
 - `./client/build-server/dual_client_push 127.0.0.1 9000 9001`（M9 双客户端 40 项：注册→加好友→
   文本/文件/图片/语音四类消息→WS 实时推送→离线补历史；另有辅助模式 `--send/--send-many/
   --send-image/--set-avatar`，用于给指定账号造数据，见 test/dual_client_push.cc 用法注释）
+- Windows 版：`client\cmake-build-win\client_smoke.exe 47.112.192.119 9000 9001`（公网冒烟）；
+  控制台中文乱码是 cmd 码页问题（GBK），仅观感
 
 ## 五、待办（按序开工）
 
@@ -105,17 +108,13 @@
   子树背景一律用 objectName 规则 + `Qt::WA_StyledBackground`，禁用 inline 样式表
 - Windows 侧已重建同版（MSYS2），GUI 脚本坐标已按新布局重标定（登录窗 420x470、聊天窗 640x700）
 
-**待办（M9 剩余，2026-10-07 第二轮后）**：
-- **真机 GUI 手工测试**：Windows 侧工具链已由会话自动装好（MSYS2 @ `C:\msys64`，Qt 6.11.2 +
-  protobuf 36.2 + gcc 16.2 + cmake/ninja，TUNA 镜像），客户端已构建并通过公网冒烟 7/7
-  （`client/cmake-build-win/`，windeployqt 已打好自包含运行时，可双击 im_client.exe）。
-  手测入口：双击 `client\cmake-build-win\im_client.exe`（登录页已预填 47.112.192.119:9000），
-  也可先跑 `dual_client_push --send-many <对端手机号> <自己手机号> 20 "demo"` 造聊天记录
-  （测试工具打印的双端手机号 + 密码 pass123 可直接用）。
-  重建命令（cmd）：`set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd
-  /c/Users/Mai/.zcode/workspace/default/im-system && cmake --build client/cmake-build-win"`
+**待办（M9 收尾，2026-10-07 第三轮后）**：
+- **用户真机手测（进行中）**：Windows 客户端已交付（双击 `client\cmake-build-win\im_client.exe`，
+  登录页预填 47.112.192.119:9000）。用户已提两轮反馈（登录方式、界面美化），均已落实，
+  等下一轮反馈。测试账号：端A `19353589846`/pass123、端B `18353589846`/pass123（两者有
+  68 条含四类消息的会话）；造数据：`dual_client_push --send-many <对端> <自己> 20 "demo"`
 - **录音真机验证**：QtMultimedia 录音链路已实现（WavRecorder→16k/单声道/16bit WAV→上传→
-  服务端 ASR），无头服务器无麦克风只能验证编译与协议层（合成 WAV 已验通），真机需点「录音」
+  服务端 ASR），无头服务器无麦克风只能验证编译与协议层（合成 WAV 已验通），用户点「录音」
   说话后看气泡转写文本
 - **已知问题（M10 处理，非阻塞）**：消息排序同秒不稳定——message 表只有秒级 create_time，
   服务端 `ORDER BY create_time` 无次序键，同一秒内的消息顺序不确定（正常人工聊天不受影响，
@@ -123,8 +122,7 @@
   并改为 `ORDER BY create_time DESC, seq DESC`（需 ODB 实体同步 + 重建服务端）
 - 小项：会话列表头像只在首次解析会话时拉取（对方换头像不实时刷新，重登后更新）；
   ChatWindow 关闭只是 hide，重开不重拉历史（靠推送保鲜，WS 断连期间漏的消息要重登才补）；
-  控制台测试程序在 Windows cmd 下中文显示乱码（printf UTF-8 vs 控制台 GBK，仅观感，
-  GUI 不受影响）
+  控制台测试程序在 Windows cmd 下中文乱码（printf UTF-8 vs 控制台 GBK，仅观感，GUI 不受影响）
 
 ### M10 部署固化
 - 编写 Dockerfile（多阶段：build 环境 → 运行镜像）或直接二进制 + systemd
@@ -168,6 +166,13 @@ cp scripts/gui_test.sh /root/gui_test.sh && tr -d '\r' < /root/gui_test.sh > /ro
 bash /root/gui_test.sh.c 1      # 阶段 1~16：启动/登录/会话/发消息/未读/分页/图片渲染，
                                 # 每阶段截图到 /root/gui_shots/，窗口坐标偏移已按 openbox 标定
 
+# —— Windows 客户端（MSYS2，本机 cmd；GUI 界面迭代时在本机构建验证）——
+# 首次配置（已完成）：cmake -S client -B client/cmake-build-win -G Ninja
+#   -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DCMAKE_PREFIX_PATH=/mingw64
+set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/Mai/.zcode/workspace/default/im-system && cmake --build client/cmake-build-win && /mingw64/bin/windeployqt.exe --release client/cmake-build-win/im_client.exe"
+# 运行：双击 client\cmake-build-win\im_client.exe（自包含，已过公网冒烟）
+# 注意：MSYS2 protobuf 36 需 CONFIG 模式 + 自查 protoc（CMakeLists 已适配，详见 env.md）
+
 # —— 验证 ——
 bash scripts/verify_infra.sh          # 基础设施（ES 两项失败=正常，服务器暂缓）
 ./build/test/gateway_sim_client       # 网关 8 步
@@ -196,7 +201,9 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 13. **ssh 远程命令里的 `$var` 不需要转义**（cmd 不展开 `$`；写成 `\$var` 远端会收到字面量）。同因 `echo EXIT=\$?` 会打出字面量。
 14. `pkill -f <模式>` 会匹配**含该字符串的 ssh 远程命令自身**（bash -c 的 cmdline 里有同样文本），直接杀死会话且无任何输出；`[t]` 方括号技巧也救不了（命令行其他位置还有该串）。杀进程用 `pkill -x <comm>`（≤15 字符的进程名）或先起后杀分两条命令。
 15. 无头 GUI 验证三件套：Xvfb（虚拟显示）+ **openbox**（无 WM 时 xdotool windowactivate 无效、Qt 的 isActiveWindow() 恒真，未读计数等焦点用例必须起 WM）+ xdotool（坐标点击/键入，截图用 `import -window root`）。xdotool 报告的窗口 Y 与 Qt 客户区原点在 openbox 下有固定差，控件偏移需按截图实测标定（gui_test.sh 内有注释）。
-16. 客户端 token 持久化在 `~/.config/im-system/im-client.conf`（QSettings），启动时 GET_USER_INFO 校验通过则跳过登录页——自动化测试想回到登录页要先删该文件。
+16. 客户端 token 持久化在 `~/.config/im-system/im-client.conf`（QSettings），启动时 GET_USER_INFO 校验通过则跳过登录页——自动化测试想回到登录页要先删该文件。Windows 侧同机制，文件在 `%APPDATA%\im-system\im-client.conf`。
+17. **Qt 控件级 inline 样式表会「吃掉」全局 QSS 的 objectName 规则**：`widget->setStyleSheet("background:#FFF")` 这类无选择器规则作用于该 widget 及**全部子孙**，且优先级高于 app 级 QSS——曾把 `#primary` 绿色主按钮盖成白底白字「隐身」（现象：按钮位置空白但点击有效）。子树背景一律用 objectName 规则（`QWidget#inputPanel{...}`）+ `setAttribute(Qt::WA_StyledBackground)`，禁用 inline 样式表。
+18. **GUI 界面验证工作流**：服务器 Xvfb 截图初检 → 发现疑点用「裁图放大 + 点击实验」定位（例：按钮看不见时，往输入框打字点空白槽位，消息上屏即证明按钮存在只是没画出来）→ 修复后**必须重启客户端再截图**（ChatWindow 关闭只是 hide，旧进程截图会误导）。每次改 UI 后窗口尺寸/控件位置会变，gui_test.sh 的偏移量要按截图重标定。
 
 ## 八、会话内决策记录（增量）
 
@@ -215,3 +222,6 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 - M9 第二轮：未读计数在客户端内存维护（服务端无已读模型）；会话窗聚焦/打开即清零，不为离线消息补未读（拉历史可见）。
 - 双客户端验证用测试工具 `client/test/dual_client_push.cc`：40 项断言覆盖注册→加好友→四类消息→推送→离线补历史；兼作造数据工具（--send/--send-many/--send-image/--set-avatar，密码固定 pass123）。
 - 已知问题移交 M10：message 表同秒排序不稳（见第五节待办）；本地 Windows → GitHub 直连不通，push 走服务器（remote 已带 PAT）。
+- M9 第三轮决策（2026-10-07，用户反馈驱动）：①登录改「账号密码主入口 + 验证码登录 + 注册」三标签（服务端零改动，协议本就双方式）；②界面微信风格：全局 QSS 主题（theme.h）+ 聊天窗从 QTextBrowser/HTML 改为 **QListWidget+setItemWidget 真实控件行**（气泡=QLabel/QFrame + objectName 样式，头像=avatar.h 首字生成，图片异步下载后 rebuild_row 就地替换）。
+- M9 第三轮：消息行渲染改控件后，历史分页的「视口保持」改在 QListWidget 上实现（prepend 时记录 scrollbar value/maximum，插行后按增量补偿）；贴底滚动用 QTimer::singleShot(0) 等 sizeHint 落定。
+- M9 第三轮：Windows 交付链路固定为「cmake --build → windeployqt --release」两步，产物自包含可直接双击；用户反馈迭代时在 Windows 侧直接重建，服务器侧仅作协议回归（client_smoke + dual_client_push）。

@@ -7,6 +7,8 @@
 - **开发/运行环境：阿里云 ECS 47.112.192.119（Ubuntu 22.04.5 LTS，2核2G + 2G swap，40G 盘）**
 - 本机 Windows：系统组件损伤，WSL2/VirtualBox 均不可用（详见 migration.md），仅作编辑器与 git 使用
 - 10月8日换新机后：优先恢复 WSL2 Ubuntu 22.04（按 scripts/install_deps.sh 一键装），服务器转回纯线上角色
+- **M9 起 Windows 侧已有可用工具链**：MSYS2 @ `C:\msys64`（Qt 6.11.2 + protobuf 36.2 + gcc 16.2，
+  TUNA 源），Windows 客户端构建/分发见下方坑位条与 HANDOFF 第六节
 - 代码位置：服务器 `/root/chatsystem`（main 分支，含全部本地提交）；SSH 密钥已配置（本机 `~/.ssh/im_dev_key`）
 
 ## 工具链版本（服务器实测）
