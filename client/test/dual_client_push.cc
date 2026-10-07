@@ -12,6 +12,7 @@
 
 #include <cstdio>
 #include <cmath>
+#include <cstdlib>
 #include <functional>
 #include <string>
 #include <vector>
@@ -288,6 +289,47 @@ int run_send_mode(const QString& host, quint16 http_port, quint16 ws_port,
   return ok ? 0 : 1;
 }
 
+// 辅助模式：以 sender 身份给 peer 连发 count 条文本（用于 GUI 分页/未读压测）
+//   dual_client_push <host> <http> <ws> --send-many <sender_phone> <peer_phone> <count> <prefix>
+int run_send_many_mode(const QString& host, quint16 http_port, quint16 ws_port,
+                       const std::string& sender_phone, const std::string& peer_phone, int count,
+                       const std::string& prefix) {
+  GatewayClient client(host, http_port, host, ws_port);
+  Account sender{sender_phone, "", QString(), &client};
+  if (!login_only(sender)) return 1;
+
+  QString err;
+  SearchUserReq search;
+  search.set_user_id(sender.uid);
+  search.set_keyword(peer_phone);
+  SearchUserResp search_resp;
+  if (!sync_call(client, REQ_TYPE_SEARCH_USER, search, &search_resp, &err) ||
+      search_resp.result_size() == 0) {
+    printf("找不到对端 %s\n", peer_phone.c_str());
+    return 1;
+  }
+  const std::string session_id =
+      find_session_with(client, sender.uid, search_resp.result(0).user_id());
+  if (session_id.empty()) {
+    printf("找不到与 %s 的会话\n", peer_phone.c_str());
+    return 1;
+  }
+
+  int ok_count = 0;
+  for (int i = 0; i < count; ++i) {
+    MsgTransmitReq req;
+    req.set_chat_session_id(session_id);
+    req.mutable_content()->set_type(MESSAGE_TYPE_TEXT);
+    req.mutable_content()->set_content(prefix + "-" + std::to_string(i + 1));
+    MsgTransmitResp resp;
+    if (sync_call(client, REQ_TYPE_TRANSMIT_MESSAGE, req, &resp, &err) && resp.success()) {
+      ++ok_count;
+    }
+  }
+  printf("send-many: session=%s ok=%d/%d\n", session_id.c_str(), ok_count, count);
+  return ok_count == count ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -305,6 +347,16 @@ int main(int argc, char* argv[]) {
     }
     return run_send_mode(host, static_cast<quint16>(http_port),
                          static_cast<quint16>(ws_port), argv[5], argv[6], argv[7]);
+  }
+  // 辅助模式：--send-many <sender_phone> <peer_phone> <count> <prefix>
+  if (argc > 4 && std::string(argv[4]) == "--send-many") {
+    if (argc < 9) {
+      printf("用法: dual_client_push <host> <http> <ws> --send-many <发送者> <对端> <条数> <前缀>\n");
+      return 2;
+    }
+    return run_send_many_mode(host, static_cast<quint16>(http_port),
+                              static_cast<quint16>(ws_port), argv[5], argv[6], atoi(argv[7]),
+                              argv[8]);
   }
 
   GatewayClient client_a(host, static_cast<quint16>(http_port), host,
