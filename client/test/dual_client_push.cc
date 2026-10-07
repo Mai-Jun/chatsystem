@@ -214,6 +214,80 @@ QByteArray make_test_wav(int ms) {
   return wav;
 }
 
+// 仅登录（账号已存在时用；密码统一 pass123）
+bool login_only(Account& acc) {
+  QString err;
+  UserLoginReq login;
+  login.set_phone(acc.phone);
+  login.set_login_type(LOGIN_BY_PASSWORD);
+  login.set_password("pass123");
+  UserLoginResp resp;
+  if (!sync_call(*acc.client, REQ_TYPE_LOGIN, login, &resp, &err) || !resp.success()) {
+    printf("      登录失败: %s\n", qPrintable(err));
+    return false;
+  }
+  acc.token = QString::fromStdString(resp.token());
+  acc.uid = resp.user_info().user_id();
+  acc.client->set_token(acc.token);
+  return true;
+}
+
+// 找出与 peer_uid 的单聊会话 id（遍历我的会话列表，比对成员）
+std::string find_session_with(GatewayClient& c, const std::string& my_uid,
+                              const std::string& peer_uid) {
+  QString err;
+  GetChatSessionListReq req;
+  req.set_user_id(my_uid);
+  GetChatSessionListResp resp;
+  if (!sync_call(c, REQ_TYPE_GET_SESSION_LIST, req, &resp, &err) || !resp.success()) return "";
+  for (const auto& s : resp.session_list()) {
+    GetSessionMemberReq mreq;
+    mreq.set_chat_session_id(s.chat_session_id());
+    GetSessionMemberResp mresp;
+    if (!sync_call(c, REQ_TYPE_GET_SESSION_MEMBER, mreq, &mresp, &err)) continue;
+    for (const auto& m : mresp.members()) {
+      if (m.user_id() == peer_uid) return s.chat_session_id();
+    }
+  }
+  return "";
+}
+
+// 辅助模式：以 sender 身份给 peer 发一条文本，用于 GUI 侧验证推送与未读计数
+//   dual_client_push <host> <http> <ws> --send <sender_phone> <peer_phone> <text>
+int run_send_mode(const QString& host, quint16 http_port, quint16 ws_port,
+                  const std::string& sender_phone, const std::string& peer_phone,
+                  const std::string& text) {
+  GatewayClient client(host, http_port, host, ws_port);
+  Account sender{sender_phone, "", QString(), &client};
+  if (!login_only(sender)) return 1;
+
+  QString err;
+  SearchUserReq search;
+  search.set_user_id(sender.uid);
+  search.set_keyword(peer_phone);
+  SearchUserResp search_resp;
+  if (!sync_call(client, REQ_TYPE_SEARCH_USER, search, &search_resp, &err) ||
+      search_resp.result_size() == 0) {
+    printf("找不到对端 %s\n", peer_phone.c_str());
+    return 1;
+  }
+  const std::string peer_uid = search_resp.result(0).user_id();
+  const std::string session_id = find_session_with(client, sender.uid, peer_uid);
+  if (session_id.empty()) {
+    printf("找不到与 %s 的会话\n", peer_phone.c_str());
+    return 1;
+  }
+
+  MsgTransmitReq req;
+  req.set_chat_session_id(session_id);
+  req.mutable_content()->set_type(MESSAGE_TYPE_TEXT);
+  req.mutable_content()->set_content(text);
+  MsgTransmitResp resp;
+  const bool ok = sync_call(client, REQ_TYPE_TRANSMIT_MESSAGE, req, &resp, &err) && resp.success();
+  printf("send: session=%s ok=%d\n", session_id.c_str(), ok ? 1 : 0);
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -222,6 +296,16 @@ int main(int argc, char* argv[]) {
   const QString host = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("127.0.0.1");
   const int http_port = argc > 2 ? QString::fromLocal8Bit(argv[2]).toInt() : 9000;
   const int ws_port = argc > 3 ? QString::fromLocal8Bit(argv[3]).toInt() : 9001;
+
+  // 辅助模式：--send <sender_phone> <peer_phone> <text>
+  if (argc > 4 && std::string(argv[4]) == "--send") {
+    if (argc < 8) {
+      printf("用法: dual_client_push <host> <http> <ws> --send <发送者手机号> <对端手机号> <文本>\n");
+      return 2;
+    }
+    return run_send_mode(host, static_cast<quint16>(http_port),
+                         static_cast<quint16>(ws_port), argv[5], argv[6], argv[7]);
+  }
 
   GatewayClient client_a(host, static_cast<quint16>(http_port), host,
                          static_cast<quint16>(ws_port));
