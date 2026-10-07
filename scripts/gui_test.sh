@@ -239,6 +239,14 @@ case "${1:-1}" in
   sleep 3
   shot 15_image
   ;;
+16)
+  # peer sends an image while the chat window is open:
+  # the push appends it and the view scrolls to the bottom -> inline render
+  cid=$(chat_win) || fail "no chat window"
+  "$BIN/dual_client_push" 127.0.0.1 9000 9001 --send-image "$PEER" "$PHONE"
+  sleep 6
+  shot 16_image_push
+  ;;
 *)
   echo "unknown stage"
   ;;

@@ -72,3 +72,8 @@
 - **httplib 开 OpenSSL 必须全局统一**：根 CMakeLists `add_compile_definitions(CPPHTTPLIB_OPENSSL_SUPPORT)`（M8 百度 ASR 走 HTTPS）；只给单个 TU 定义会与其他包含 httplib 的 TU 构成 ODR 违规。
 - **无头服务器装 Qt6 缺 GL 头**：qt6-base-dev/libqt6websockets6-dev 装完 find_package(Qt6) 仍报 "Failed to find Qt component Widgets"（配置文件其实在，是 Qt6Gui 的 OpenGL 依赖挂了）——必须补 `libgl1-mesa-dev libegl-dev`（M9 已装齐）。
 - Qt 客户端编译用 `-DCMAKE_PREFIX_PATH=/usr/local`：否则 FindProtobuf 会抓到 apt 的 protobuf 3.12.4 头与 /usr/local 的 3.20.2 库混搭（与 brpc 同源问题）。
+- **M9 追加安装（2026-10-07，apt 直装无坑）**：`qt6-multimedia-dev`（录音/播放，6.2.4，自动带上 gstreamer 系）、`xvfb`、`openbox`、`xdotool`、`imagemagick`（无头 GUI 验证四件套）。装完需重启网关等 7 个服务（apt 触发 needrestart 但服务是 nohup 裸进程，不会被它接管）。
+- **无头 GUI 验证三件套缺一不可**：Xvfb（虚拟显示）+ openbox（无 WM 时 xdotool windowactivate 无效、Qt isActiveWindow() 恒真，未读计数等焦点用例全废）+ xdotool。控件坐标按「窗口几何+偏移」且偏移需按截图实测（xdotool 报的 Y 与 Qt 客户区原点在 openbox 下有固定差）。截图 `import -window root`。全流程脚本见 `scripts/gui_test.sh`（ASCII-only，见下条）。
+- **本机 PowerShell 改写 UTF-8 文件会转成 GBK**（PS5 `Set-Content` 用系统 ANSI 码页），后续 Edit 又按 GBK 保留，scp 到服务器后中文匹配/输出全废。`scripts/*.sh` 一律 ASCII-only；中文窗口名改用「窗口 id / ASCII 正则」匹配。客户端 .cc 均为 UTF-8 未受影响。
+- **ssh 远程命令中 `$var`/`$?` 不需转义**（本地 cmd 不展开 `$`；写成 `\$var` 远端收到字面量）。`pkill -f` 的模式若与 ssh 命令行文本重合会杀掉会话自身（bash -c cmdline 含该串），用 `pkill -x <comm>`（≤15 字符）或分两条命令。
+- **已知问题（M10）**：message 表仅秒级 create_time 且 `ORDER BY create_time` 无次序键，同一秒内消息顺序不稳定（压测可见乱序）；建议加 `seq BIGINT AUTO_INCREMENT` 次序键。

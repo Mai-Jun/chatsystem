@@ -4,7 +4,7 @@
 
 ## 一、30 秒了解现状
 
-**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**，服务器上 7 个子服务正在运行。**M9 Qt 客户端进行中**：首轮脚手架完成（协议层冒烟 7/7 过、UI 骨架编译通过），GUI 手工测试待新机/安全组放行。
+**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**，服务器上 7 个子服务正在运行。**M9 Qt 客户端功能已完成（2026-10-07 第二轮）**：文本/图片/文件/语音四类消息、未读计数、历史分页、头像全部实现；协议冒烟 7/7、双客户端推送+四类消息 40/40、无头 GUI（Xvfb+openbox+xdotool）逐项截图验证通过。**仅剩真机手工测试**（Windows 侧 Qt 未装，见第五节）。
 
 剩余：**M9 Qt 桌面客户端（剩余部分）→ M10 部署固化**（含 ES 上服务器）。
 
@@ -41,11 +41,16 @@
 | M6 消息存储 | ✅ | E2E：历史分页 / 关键字搜索（ES 暂缓→LIKE 降级） |
 | M7 消息转发+MQ | ✅ | E2E：单聊+群消息转发/持久化/MQ 广播投递 |
 | M8 语音子服务 | ✅ | E2E 17/17（新增 4 项语音链路）；message 表语音消息 asr_text 有值 |
+| M9 Qt 客户端 | ✅（功能完成，剩真机手测） | client_smoke 7/7；dual_client_push 40/40（双端注册加好友→文本/文件/图片/语音→WS 推送→离线补历史）；Xvfb 无头 GUI 16 项截图（见第八节） |
 
 验收工具（服务器上可随时重跑）：
 - `ctest --test-dir build --output-on-failure`（单元+集成测试）
 - `./build/test/gateway_sim_client`（M4 网关 8 步链路）
 - `./build/test/e2e_friend_msg`（M5~M8 十七项链路，语音步骤需 speech_server 在线）
+- `./client/build-server/client_smoke 127.0.0.1 9000 9001`（M9 协议冒烟 7 项）
+- `./client/build-server/dual_client_push 127.0.0.1 9000 9001`（M9 双客户端 40 项：注册→加好友→
+  文本/文件/图片/语音四类消息→WS 实时推送→离线补历史；另有辅助模式 `--send/--send-many/
+  --send-image/--set-avatar`，用于给指定账号造数据，见 test/dual_client_push.cc 用法注释）
 
 ## 五、待办（按序开工）
 
@@ -65,12 +70,42 @@
 - Qt 版本基线 6.2.4（jammy apt），Windows 侧后续构建建议 Qt6.2+ + vcpkg protobuf（CMake 已用
   find_package，可迁移）
 
-**待办（M9 剩余）**：
-- **GUI 手工测试**：本机 Windows 换新机后装 Qt6 跑 im_client，或 WSL2+WSLg（env.md：10月8日新机恢复 WSL2）；
-  **前提：阿里云控制台放行 9000/9001**（已实测公网不通，安全组只开了 22）
-- 双客户端互发消息验证 WS 实时推送（M7 遗留项）
-- 语音/图片/文件消息 UI（先做文件上传下载，语音含录音 QtMultimedia）
-- 界面细节：未读计数、历史分页加载更多、单聊头像等
+**已完成（第二轮 2026-10-07，全部验证）**：
+- 四类消息 UI：图片/文件走「上传 PutSingle → TRANSMIT(type/file_id/file_name/file_size)」，
+  图片下载后经 QTextDocument 图片资源内嵌渲染（220px 等比缩放）+「保存」锚点，文件消息「另存」
+  锚点走 QFileDialog 落盘；语音「录音」按钮 → WavRecorder（QAudioSource 拉模式，16k/单声道/
+  16bit PCM 手工拼 44 字节 RIFF 头）→ 上传 → 服务端 ASR（转写文本随推送回来显示在气泡），
+  「播放」锚点下载到临时文件后 QMediaPlayer 回放
+- 未读计数：推送到达且会话窗未聚焦（或未打开/已关闭）时累加，列表项显示「名字 (N)」，
+  打开/聚焦即清零；自己发的消息经广播回显不计未读
+- 历史分页：首屏最新 50 条，「加载更多」按最旧时间戳+1 向前翻（开区间游标避免同秒消息被跳过，
+  重复由 message_id 去重），翻页后视口位置保持
+- 头像：会话列表（GetSessionMember 的 avatar_file_id）与好友列表（GetFriendList）异步下载、
+  内存缓存、28x28 平滑缩放贴 QIcon
+- 协议层新增 upload_file/download_file 便捷封装（GatewayClient）
+- 测试：`dual_client_push`（40 项自动断言，含离线补历史与四类消息字节级一致性）+
+  4 个造数据辅助模式；`scripts/gui_test.sh`（Xvfb+openbox+xdotool 无头 GUI 驱动，16 阶段截图，
+  截图在服务器 /root/gui_shots/）
+- 修 bug：登录/注册页两个 tab 各自把 QFormLayout 和 QVBoxLayout 同时设了父，导致登录按钮、
+  手机号标签丢失（首轮截图暴露，已改单一布局持有 + 登录按钮 setDefault 支持回车提交）
+- 服务器新增依赖：qt6-multimedia-dev、xvfb、openbox、xdotool、imagemagick（apt 直装）
+
+**待办（M9 剩余，2026-10-07 第二轮后）**：
+- **真机 GUI 手工测试**：Windows 侧 Qt/编译器均未装（本机无 git/cmake/Qt，见 env.md）。两条路：
+  ① MSYS2 全自动装（`pacman -S mingw-w64-x86_64-qt6-base qt6-multimedia qt6-websockets
+  qt6-imageformats protobuf cmake`，客户端 CMake 已用 find_package 可直接迁移）；
+  ② 等 10月8日新机恢复 WSL2 后在 WSL 里构建。服务器地址已在登录页预填 47.112.192.119:9000/9001，
+  安全组已放行。手工测试可先跑 `dual_client_push --send-many <对端手机号> <自己手机号> 20 "demo"`
+  造聊天记录（测试工具打印的双端手机号 + 密码 pass123 可直接用）
+- **录音真机验证**：QtMultimedia 录音链路已实现（WavRecorder→16k/单声道/16bit WAV→上传→
+  服务端 ASR），无头服务器无麦克风只能验证编译与协议层（合成 WAV 已验通），真机需点「录音」
+  说话后看气泡转写文本
+- **已知问题（M10 处理，非阻塞）**：消息排序同秒不稳定——message 表只有秒级 create_time，
+  服务端 `ORDER BY create_time` 无次序键，同一秒内的消息顺序不确定（正常人工聊天不受影响，
+  压测/刷屏时可见乱序）。建议 M10 给 message 表加 `seq BIGINT NOT NULL AUTO_INCREMENT,UNIQUE(seq)`
+  并改为 `ORDER BY create_time DESC, seq DESC`（需 ODB 实体同步 + 重建服务端）
+- 小项：会话列表头像只在首次解析会话时拉取（对方换头像不实时刷新，重登后更新）；
+  ChatWindow 关闭只是 hide，重开不重拉历史（靠推送保鲜，WS 断连期间漏的消息要重登才补）
 
 ### M10 部署固化
 - 编写 Dockerfile（多阶段：build 环境 → 运行镜像）或直接二进制 + systemd
@@ -103,10 +138,16 @@ for s in file_server user_server friend_server message_storage_server message_se
 done
 nohup ./build/server/gateway_server/gateway_server --flagfile=conf/common.flags --flagfile=conf/gateway_server.flags >>/root/gateway_server.log 2>&1 &
 
-# —— Qt 客户端构建（M9，独立工程）——
+# —— Qt 客户端构建（M9，独立工程；依赖 qt6-base/websockets/multimedia-dev）——
 cmake -S client -B client/build-server -DCMAKE_PREFIX_PATH=/usr/local   # 锁 /usr/local 的 protobuf 3.20.2
 systemd-run --scope --quiet -p MemoryMax=1100M nice -n 19 cmake --build client/build-server -j1
-./client/build-server/client_smoke 127.0.0.1 9000 9001   # 协议冒烟（7 项）
+./client/build-server/client_smoke 127.0.0.1 9000 9001        # 协议冒烟（7 项）
+./client/build-server/dual_client_push 127.0.0.1 9000 9001    # 双客户端四类消息+推送（40 项）
+
+# —— 无头 GUI 验证（可选；Xvfb+openbox+xdotool+imagemagick 已装）——
+cp scripts/gui_test.sh /root/gui_test.sh && tr -d '\r' < /root/gui_test.sh > /root/gui_test.sh.c
+bash /root/gui_test.sh.c 1      # 阶段 1~16：启动/登录/会话/发消息/未读/分页/图片渲染，
+                                # 每阶段截图到 /root/gui_shots/，窗口坐标偏移已按 openbox 标定
 
 # —— 验证 ——
 bash scripts/verify_infra.sh          # 基础设施（ES 两项失败=正常，服务器暂缓）
@@ -132,6 +173,11 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 9. 阿里云安全组可能只开了 22；M9 联调前放行 9000/9001。
 10. **pkill -x 杀不掉超 15 字符的进程名**（comm 截断）：`message_storage_server` 实际 comm 是 `message_storage`，`pkill -x` 漏杀导致旧进程占住 10004 端口、新实例起不来（M8 事故）。停服务一律 `pkill -f "build/server/<服务名>/"`。
 11. httplib 需要全局统一启用 OpenSSL：根 CMakeLists 的 `add_compile_definitions(CPPHTTPLIB_OPENSSL_SUPPORT)`，否则不同编译单元宏不一致会构成 ODR 违规（M8 起百度 ASR 走 HTTPS）。
+12. **本机 PowerShell 改写 UTF-8 文件会转成 GBK**（`Set-Content` 用系统 ANSI 码页），之后 Edit 工具按 GBK 保留，传到服务器后中文全部失配。`scripts/*.sh` 一律 ASCII-only（窗口名等中文模式改用窗口 id/ASCII 子串匹配）；本地改动入库前可用 `od -An -tx1 | grep 'bb e1'` 之类抽查字节。客户端 .cc 均为 UTF-8 未受影响。
+13. **ssh 远程命令里的 `$var` 不需要转义**（cmd 不展开 `$`；写成 `\$var` 远端会收到字面量）。同因 `echo EXIT=\$?` 会打出字面量。
+14. `pkill -f <模式>` 会匹配**含该字符串的 ssh 远程命令自身**（bash -c 的 cmdline 里有同样文本），直接杀死会话且无任何输出；`[t]` 方括号技巧也救不了（命令行其他位置还有该串）。杀进程用 `pkill -x <comm>`（≤15 字符的进程名）或先起后杀分两条命令。
+15. 无头 GUI 验证三件套：Xvfb（虚拟显示）+ **openbox**（无 WM 时 xdotool windowactivate 无效、Qt 的 isActiveWindow() 恒真，未读计数等焦点用例必须起 WM）+ xdotool（坐标点击/键入，截图用 `import -window root`）。xdotool 报告的窗口 Y 与 Qt 客户区原点在 openbox 下有固定差，控件偏移需按截图实测标定（gui_test.sh 内有注释）。
+16. 客户端 token 持久化在 `~/.config/im-system/im-client.conf`（QSettings），启动时 GET_USER_INFO 校验通过则跳过登录页——自动化测试想回到登录页要先删该文件。
 
 ## 八、会话内决策记录（增量）
 
@@ -144,3 +190,9 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 - M8 决策：speech_server 未配置密钥时返回**占位转写**「（开发模式）语音消息」（success=true），保证语音链路 asr_text 可验收——与短信固定码同一思路；真实密钥写入 `conf/speech_server.local.flags`（模板 `conf/speech_server.local.flags.example`）后重启即切正式识别，零代码改动。
 - M8 实现要点：百度 REST 客户端在 `server/speech_server/baidu_asr.hpp`（token 缓存 + 极简 JSON 解析 + WAV 采样率探测），`--baidu_dev_pid` 默认 1537（普通话有标点 16k）；网关新增 `REQ_TYPE_SPEECH_RECOGNITION`(type=40) 直达路由；语音服务无状态，不连 MySQL/Redis/MQ。
 - M9 决策：client/ 为**独立 CMake 工程**（只依赖 Qt6+protobuf，不链 brpc/ODB/im_common）；protobuf 用 find_package（服务器上配 `-DCMAKE_PREFIX_PATH=/usr/local` 锁 3.20.2）；Qt 基线 6.2.4（jammy apt，无 QtProtobuf，客户端 pb 用 protoc 生成 C++）；开发模式固定码 666666 补进 user_server（注册+短信登录双入口，PLAN 既定设计）。
+- M9 第二轮决策（2026-10-07）：语音消息**只传文件不传转写**——客户端上传 WAV 后按 VOICE 类型 TRANSMIT，ASR 由 message_server 在持久化前调用 speech_server 完成（asr_text 随消息入库与推送），客户端不做语音识别；录音格式 16k/单声道/16bit PCM WAV（WavRecorder 手工拼 RIFF 头），与百度短语音识别对齐。
+- M9 第二轮：图片消息渲染走 QTextDocument::addResource（`<img src="imimg:<file_id">`），下载异步、不把 base64 灌进 HTML；文件/图片/语音气泡用自定义协议锚点（imsave:/imgsave:/implay:）+ anchorClicked 分发。
+- M9 第二轮：WS 推送在线时自己发的消息**以广播回显上屏**（message_id 去重）；仅当推送未连通才用 MsgTransmitResp 本地补显，避免双份。
+- M9 第二轮：未读计数在客户端内存维护（服务端无已读模型）；会话窗聚焦/打开即清零，不为离线消息补未读（拉历史可见）。
+- 双客户端验证用测试工具 `client/test/dual_client_push.cc`：40 项断言覆盖注册→加好友→四类消息→推送→离线补历史；兼作造数据工具（--send/--send-many/--send-image/--set-avatar，密码固定 pass123）。
+- 已知问题移交 M10：message 表同秒排序不稳（见第五节待办）；本地 Windows → GitHub 直连不通，push 走服务器（remote 已带 PAT）。
