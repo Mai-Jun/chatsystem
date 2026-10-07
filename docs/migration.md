@@ -1,29 +1,55 @@
-# 换机迁移清单（2026-10-08 主力机切换）
+# 换机迁移清单（2026-10-08 主力机切换；2026-10-07 M9 第四轮后按现状重写）
 
-> 背景：M0 阶段（10-05~10-07）在当前机器开发，10-08 起切换到另一台电脑。
-> 项目的环境搭建已全部脚本化，迁移成本 = 以下清单按序执行一遍（约 1~2 小时，主要是下载与 brpc 编译）。
+> 背景：M0~M9 在旧机开发，模式为「旧机 Windows 编辑 + 阿里云服务器编译/运行 + MSYS2 构建
+> Windows 客户端」。10-08 起切换到新机继续开发。
+> **换机不丢任何项目数据**：代码与全部运行状态（7 个子服务、docker 四件套、MySQL/Redis 数据）
+> 都在服务器上；新机要重建的只有「开发工具链」和「Windows 客户端产物」。
+> 后端环境已脚本化（`scripts/install_deps.sh`），迁移成本 ≈ 1~2 小时（主要是下载与 brpc 编译）。
 
-## 旧机收尾（离开前完成）
+## 零、资产在哪张表（先读，避免恐慌）
 
-- [ ] M0 全部完成（脚本已在旧机验证通过，env.md 版本已回填）
-- [ ] GitHub 远程仓库已建立，本地全部提交并 push（`git status` 干净）
-- [ ] 如有未推内容：`git push -u origin main`
+| 资产 | 位置 | 换机后 |
+|---|---|---|
+| 全部代码 | GitHub `Mai-Jun/chatsystem`（私有）+ 服务器 `/root/chatsystem`（**最完整副本**，HEAD=`9acee19`，M9 第四轮） | 服务器原样健在；新机 clone 即得 |
+| 运行中的 7 个子服务 + docker 四件套 + 数据（含测试账号 A/B 的 68 条会话） | 服务器 | 原样健在，与换机无关 |
+| Windows 客户端 `im_client.exe` / 根目录快捷方式 / 登录态 QSettings | 旧机 | **不迁移**；新机按第六节三步重建（几分钟），登录态无需迁移（重登即可） |
+| 服务器 SSH 私钥 `~/.ssh/im_dev_key` | 旧机 | 新机生成新密钥（首次用密码登录过渡，见下） |
+| GitHub PAT | 旧机 `docs/github_pat.local`（gitignore，**不随 clone 走**）+ 各端 remote URL 内嵌 | 新机从服务器 remote URL 取证（见下） |
+| 云服务密钥（百度 ASR/阿里云短信） | 服务器 `conf/*.local.flags`（未配置则开发模式旁路） | 原样健在 |
 
-## 新机初始化（Windows 11 建议 25H2 亦可）
+## 一、旧机收尾状态（2026-10-07 已完成）
 
-1. 安装 WSL2 + Ubuntu 22.04：
-   - 管理员 PowerShell：`wsl --install -d Ubuntu-22.04`
-   - 重启 → Ubuntu 终端设置用户名/密码
-2. 把仓库 clone 到工作区（或 `git clone` 到 WSL home，编译更快）：
-   - `wsl -d Ubuntu-22.04 -- git clone <仓库地址> /mnt/c/<路径>/im-system`
-3. 安装编译依赖（约 20~40 分钟，含 brpc 源码编译）：
-   - `wsl -d Ubuntu-22.04 -u root -- bash /mnt/c/<路径>/im-system/scripts/install_deps.sh`
-   - 国内网络可先 `export GH_PROXY=https://ghfast.top`
-4. 启动基础设施并验证：
-   - `docker compose -f docker/docker-compose.dev.yml up -d`（WSL 内无 docker 时先装 Docker Desktop 或 docker engine，见 env.md）
-   - `bash scripts/verify_infra.sh` 全绿
-5. 编译冒烟测试：`cmake -S . -B build && cmake --build build && ctest --test-dir build`
-6. 对照 `docs/env.md` 回填新机版本号，确认与旧机一致（brpc 1.9.0 / protobuf 3.12 为锁定组合，不得漂移）
+- [x] M0~M9 全部提交：本地 main = 服务器 `/root/chatsystem` = `9acee19`
+- [x] 旧机到 GitHub 直连不通（实测）：本地 push 失败，走 bundle+scp 同步服务器（流程见 HANDOFF 第六节）
+- [ ] **新机的第一件事**：配好带 PAT 的 remote 后 `git push origin main`，让 GitHub 追平
+      （新机网络未必同样被墙；push 成功后 `git log` 三端对齐，此后 push 才是主同步通道）
+
+## 二、新机初始化（按序执行）
+
+1. **SSH 通服务器**（一切的前提）：首次用密码登录 `ssh root@47.112.192.119`
+   （密码见 HANDOFF 第三节）→ 新机生成密钥 `ssh-keygen -t ed25519` → 把公钥追加到服务器
+   `/root/.ssh/authorized_keys` → 免密验证通过
+2. **取 PAT**（否则 clone 不了私有仓库，此处有先有鸡的死循环，用服务器破局）：
+   `ssh root@47.112.192.119 "git -C /root/chatsystem remote -v"` → URL 里
+   `https://<PAT>@github.com/...` 的 PAT 段就是；或直接向用户索取（用户有明文备份）
+3. **clone + 配 remote**：`git clone https://<PAT>@github.com/Mai-Jun/chatsystem.git <工作区路径>`
+   → 把 PAT 明文存到 `docs/github_pat.local`（已被 `*.local` 规则忽略；**绝不写进任何 git
+   跟踪文件**，push protection 会拒推，2026-10-07 实测）→ `git push origin main`（见第一节）
+4. **服务器侧开发环境（二选一，按需）**：
+   - A. **纯 ssh 到服务器开发**（旧机 M4~M9 的实际模式）：新机有 git+ssh 就够了，零安装；
+     编译/起服务/测试命令全部见 HANDOFF 第六节的「服务器常用命令」
+   - B. 本地 WSL2 Ubuntu 22.04（env.md 早期规划，本地编译调试更顺手）：
+     管理员 PowerShell `wsl --install -d Ubuntu-22.04` → 重启 →（新机 BIOS 需开 VT-x）
+     `bash scripts/install_deps.sh`（约 20~40 分钟，brpc 源码编译为主；国内网络先
+     `export GH_PROXY=https://ghfast.top`）→ 对照 env.md 回填版本；**protobuf 3.20.2 与
+     brpc 1.9.0 是锁定组合不得漂移**；本地构建仅用于开发验证，线上服务始终跑在服务器
+5. **Windows 客户端工具链**（继续 M9 真机手测必需）：按 env.md 坑位条「Windows 侧构建
+   （MSYS2）」从零安装（sfx 解压 + pacman 装 qt6-base/websockets/multimedia/protobuf/
+   cmake/ninja/gcc）→ HANDOFF 第六节三步构建（`cmake --build` → `windeployqt` →
+   `fix_runtime_dlls.sh`，第三步必跑见坑 19）→ 重建根目录快捷方式（指向新机 exe 路径）
+   → 验收：`client_smoke.exe <服务器IP> 9000 9001` 8/8 + `dual_client_push` 40/40
+6. 回到 HANDOFF.md「五、待办」从 M9 真机手测继续（测试账号：A `19353589846`/pass123、
+   B `18353589846`/pass123，服务器数据都在）
 
 ## 本机下载物清理台账（防止遗忘）
 
@@ -35,7 +61,7 @@
 | `C:\WSL\ubuntu-22.04.5-live-server-amd64.iso`、`VirtualBox-*.exe`、`PortableGit.7z.exe`、bundle、临时脚本 | ✅ 已删除（2026-10-06 夜间清扫） | |
 | VirtualBox 虚拟机 im-dev（注册+磁盘+目录） | ✅ 已删除（unregistervm --delete） | |
 | VirtualBox **程序本体** | 待卸载（需管理员，留待用户） | 控制面板卸载即可 |
-| `C:\WSL\plink.exe`、`C:\PortableGit\`、`~/.ssh/im_dev_key` | **暂保留**（推送/服务器访问在用） | 项目收口时删 |
+| `C:\WSL\plink.exe`、`C:\PortableGit\`、`~/.ssh/im_dev_key` | **暂保留**（旧机退役时随旧机处置；私钥若留应删除，新机已换新密钥） | 旧机专用工具，新机用系统 git/ssh 即可 |
 | `C:\PortableGit\` | 项目结束时可删 | Windows 侧便携 git |
 | `C:\WSL\im-dev\` + `C:\Users\Mai\VirtualBox VMs\im-dev\` | 保留 | 虚拟机磁盘与配置；换新机时整目录可迁移或重建 |
 | Windows 已启用的功能（虚拟机平台/容器/hypervisor=auto） | 保留无害 | 新机无需复制；这台机器日后想用 WSL 需先修复系统组件 |
@@ -80,5 +106,6 @@
 ## 注意事项
 
 - 密钥类（百度 ASR、阿里云短信、数据库密码）：只存在于 conf/*.local.flags 与个人配置中，**不入 git**，换机时手动带走/重建；
-- Docker 卷（MySQL/ES 数据）不随 git 走：M0 阶段可直接丢弃，M2 起有真实数据后用 `sql/` 脚本重建；
+- **GitHub PAT 同理**：`docs/github_pat.local` 被 `*.local` 忽略、不随 clone 走，新机取证见第二节第 2 步；raw PAT 绝不写入 git 跟踪文件（push protection 拒推）；
+- Docker 卷（MySQL/ES 数据）不随 git 走：M0 阶段可直接丢弃，M2 起有真实数据后用 `sql/` 脚本重建；**当前真实数据全在服务器上，与换机无关**；
 - 新机 BIOS 需开启 CPU 虚拟化（VT-x / SVM），Windows 功能"虚拟机平台"由 `wsl --install` 自动启用。
