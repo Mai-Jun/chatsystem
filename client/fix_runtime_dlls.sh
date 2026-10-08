@@ -3,7 +3,8 @@
 # Scan BOTH the exe(s) and all deployed DLLs (windeployqt skips compiler runtime
 # and protobuf/abseil DLLs), iterating the transitive closure until it converges.
 set -u
-cd /c/Users/Mai/.zcode/workspace/default/im-system/client/cmake-build-win || exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/cmake-build-win" || exit 1
 
 for round in 1 2 3 4; do
   added=0

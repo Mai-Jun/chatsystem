@@ -12,44 +12,41 @@
 |---|---|---|
 | 全部代码 | GitHub `Mai-Jun/chatsystem`（私有）+ 服务器 `/root/chatsystem`（**最完整副本**，HEAD=`9acee19`，M9 第四轮） | 服务器原样健在；新机 clone 即得 |
 | 运行中的 7 个子服务 + docker 四件套 + 数据（含测试账号 A/B 的 68 条会话） | 服务器 | 原样健在，与换机无关 |
-| Windows 客户端 `im_client.exe` / 根目录快捷方式 / 登录态 QSettings | 旧机 | **不迁移**；新机按第六节三步重建（几分钟），登录态无需迁移（重登即可） |
-| 服务器 SSH 私钥 `~/.ssh/im_dev_key` | 旧机 | 新机生成新密钥（首次用密码登录过渡，见下） |
-| GitHub PAT | 旧机 `docs/github_pat.local`（gitignore，**不随 clone 走**）+ 各端 remote URL 内嵌 | 新机从服务器 remote URL 取证（见下） |
+| Windows 客户端 `im_client.exe` / 根目录快捷方式 / 登录态 QSettings | 旧机 | ✅ **已于 2026-10-08 在新机重建**（三步构建 + 快捷方式，回归全过）；登录态无需迁移（重登即可） |
+| 服务器 SSH 私钥 `~/.ssh/im_dev_key` | 旧机 | ✅ 新机已换新密钥（`~/.ssh/id_ed25519`，2026-10-08 已入 authorized_keys） |
+| GitHub PAT | 旧机 `docs/github_pat.local`（gitignore，**不随 clone 走**）+ 各端 remote URL 内嵌 | ✅ 新机已从服务器 remote URL 取证并重建 `docs/github_pat.local` |
 | 云服务密钥（百度 ASR/阿里云短信） | 服务器 `conf/*.local.flags`（未配置则开发模式旁路） | 原样健在 |
 
 ## 一、旧机收尾状态（2026-10-07 已完成）
 
 - [x] M0~M9 全部提交：本地 main = 服务器 `/root/chatsystem` = `9acee19`
 - [x] 旧机到 GitHub 直连不通（实测）：本地 push 失败，走 bundle+scp 同步服务器（流程见 HANDOFF 第六节）
-- [ ] **新机的第一件事**：配好带 PAT 的 remote 后 `git push origin main`，让 GitHub 追平
-      （新机网络未必同样被墙；push 成功后 `git log` 三端对齐，此后 push 才是主同步通道）
+- [x] **新机的第一件事（✅ 2026-10-08 完成）**：配好带 PAT 的 remote 后 `git push origin main`，让 GitHub 追平。
+      新机同样直连不通，最终在服务器侧 `git config http.version HTTP/1.1` 后重试成功（`706e2b0..63a6b38`）；
+      三端 HEAD 已对齐，此后 push 走「服务器侧代推」为主通道
 
-## 二、新机初始化（按序执行）
+## 二、新机初始化（按序执行）—— ✅ 已于 2026-10-08 全部完成，勾选留档
 
-1. **SSH 通服务器**（一切的前提）：首次用密码登录 `ssh root@47.112.192.119`
-   （密码见 HANDOFF 第三节）→ 新机生成密钥 `ssh-keygen -t ed25519` → 把公钥追加到服务器
-   `/root/.ssh/authorized_keys` → 免密验证通过
-2. **取 PAT**（否则 clone 不了私有仓库，此处有先有鸡的死循环，用服务器破局）：
+1. **SSH 通服务器**（一切的前提）：✅ 首次用密码经 paramiko 把新机 `~/.ssh/id_ed25519.pub`
+   追加进服务器 `/root/.ssh/authorized_keys` → 免密验证通过
+2. **取 PAT**（否则 clone 不了私有仓库，此处有先有鸡的死循环，用服务器破局）：✅
    `ssh root@47.112.192.119 "git -C /root/chatsystem remote -v"` → URL 里
    `https://<PAT>@github.com/...` 的 PAT 段就是；或直接向用户索取（用户有明文备份）
-3. **clone + 配 remote**：`git clone https://<PAT>@github.com/Mai-Jun/chatsystem.git <工作区路径>`
-   → 把 PAT 明文存到 `docs/github_pat.local`（已被 `*.local` 规则忽略；**绝不写进任何 git
-   跟踪文件**，push protection 会拒推，2026-10-07 实测）→ `git push origin main`（见第一节）
-4. **服务器侧开发环境（二选一，按需）**：
-   - A. **纯 ssh 到服务器开发**（旧机 M4~M9 的实际模式）：新机有 git+ssh 就够了，零安装；
-     编译/起服务/测试命令全部见 HANDOFF 第六节的「服务器常用命令」
-   - B. 本地 WSL2 Ubuntu 22.04（env.md 早期规划，本地编译调试更顺手）：
-     管理员 PowerShell `wsl --install -d Ubuntu-22.04` → 重启 →（新机 BIOS 需开 VT-x）
-     `bash scripts/install_deps.sh`（约 20~40 分钟，brpc 源码编译为主；国内网络先
-     `export GH_PROXY=https://ghfast.top`）→ 对照 env.md 回填版本；**protobuf 3.20.2 与
-     brpc 1.9.0 是锁定组合不得漂移**；本地构建仅用于开发验证，线上服务始终跑在服务器
-5. **Windows 客户端工具链**（继续 M9 真机手测必需）：按 env.md 坑位条「Windows 侧构建
-   （MSYS2）」从零安装（sfx 解压 + pacman 装 qt6-base/websockets/multimedia/protobuf/
-   cmake/ninja/gcc）→ HANDOFF 第六节三步构建（`cmake --build` → `windeployqt` →
-   `fix_runtime_dlls.sh`，第三步必跑见坑 19）→ 重建根目录快捷方式（指向新机 exe 路径）
-   → 验收：`client_smoke.exe <服务器IP> 9000 9001` 8/8 + `dual_client_push` 40/40
+3. **clone + 配 remote**：✅ clone 走 gh-proxy（新机直连 GitHub 也不通），随后
+   `git fetch ssh://root@47.112.192.119/root/chatsystem main` 追平服务器领先提交（推荐路径）；
+   PAT 明文已存 `docs/github_pat.local`（已被 `*.local` 规则忽略；**绝不写进任何 git
+   跟踪文件**，push protection 会拒推，2026-10-07 实测）→ `git push origin main` 见第一节
+4. **服务器侧开发环境（二选一，按需）**：✅ 选 **A 纯 ssh 到服务器开发**（旧机 M4~M9 的实际模式）：
+   新机有 git+ssh 就够了，零安装；编译/起服务/测试命令全部见 HANDOFF 第六节；
+   （B 本地 WSL2 未装，env.md 早期规划保留备用：`wsl --install -d Ubuntu-22.04` →
+   `bash scripts/install_deps.sh`；**protobuf 3.20.2 与 brpc 1.9.0 是锁定组合不得漂移**）
+5. **Windows 客户端工具链**：✅ 按 env.md 坑位条「Windows 侧构建（MSYS2）」从零安装
+   （TUNA 20260927 sfx 42MB 解压 + pacman 装 qt6-base/websockets/multimedia/protobuf/
+   cmake/ninja/gcc/binutils/gdb，mirrorlist.mingw/msys 已插 TUNA）→ HANDOFF 第六节三步构建
+   （`cmake --build` → `windeployqt` → `fix_runtime_dlls.sh`，第三步必跑见坑 19）→ 根目录快捷方式已重建
+   → 验收：`client_smoke.exe 47.112.192.119 9000 9001` 8/8 + `dual_client_push` 40/40 + GUI 启动冒烟 全过
 6. 回到 HANDOFF.md「五、待办」从 M9 真机手测继续（测试账号：A `19353589846`/pass123、
-   B `18353589846`/pass123，服务器数据都在）
+   B `18353589846`/pass123，服务器数据都在）→ **当前位置**
 
 ## 本机下载物清理台账（防止遗忘）
 

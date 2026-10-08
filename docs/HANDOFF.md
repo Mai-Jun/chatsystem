@@ -1,8 +1,8 @@
 # 交接文档（HANDOFF）——新会话从这里开始
 
-> 更新：2026-10-07（M9 第四轮后）。本文件是跨会话续接开发的**唯一权威入口**，每次阶段推进后更新。
-> **下一次会话在新机器上进行**（2026-10-08 主力机切换）：先读 `docs/migration.md` 换机清单
-> （含「资产在哪张表」与 SSH/PAT/clone/客户端重建的按序步骤），再回来读本文件。
+> 更新：2026-10-08（新机初始化完成，M9 第四轮后）。本文件是跨会话续接开发的**唯一权威入口**，每次阶段推进后更新。
+> **换机已完成（2026-10-08）**：新机（`C:\Users\33087`）SSH/clone/push 追平/MSYS2 工具链/Windows 客户端重建
+> 全部就绪并通过回归（client_smoke 8/8 + dual_client_push 40/40 + GUI 启动冒烟），过程见 migration.md 第二节勾选。
 
 ## 一、30 秒了解现状
 
@@ -24,15 +24,15 @@
 | 项 | 值 |
 |---|---|
 | **服务器（当前开发+运行环境）** | 阿里云 ECS `47.112.192.119`（Ubuntu 22.04.5，2核1.6G+4G swap） |
-| 服务器 SSH | `ssh -i ~/.ssh/im_dev_key root@47.112.192.119`（密钥是【旧机】的 `C:\Users\Mai\.ssh\im_dev_key`；密码登录也可用 root/Aa@290631541、mai/290631541；**新机首次用密码登录后配新密钥**，见 migration.md 第二节） |
+| 服务器 SSH | `ssh root@47.112.192.119`（**新机 2026-10-08 起**：本机 `~/.ssh/id_ed25519` 已入服务器 authorized_keys，免密可用；旧机 `im_dev_key` 已随旧机退役。密码登录仍可用 root/Aa@290631541、mai/290631541 作后备） |
 | 服务器代码 | `/root/chatsystem`（main 分支，HEAD=7c5fbe7 附近，含全部功能代码） |
 | 服务器构建产物 | `/root/chatsystem/build/`（7 个服务 + 测试工具） |
 | GitHub | `Mai-Jun/chatsystem`（私有）。**PAT 已由用户记录在项目内两处（均不入 git 仓库）**：① 本地与服务器的 origin remote URL 已内置 PAT——`git push/fetch origin` 直接可用；② 本地明文备份 `docs/github_pat.local`（被 `.gitignore` 的 `*.local` 规则忽略）。**raw PAT 不能写进任何 git 跟踪文件**：GitHub push protection 会拒绝携带密钥的推送（2026-10-07 实测）。**新机首次 clone 有死循环（clone 需要 PAT，而 ② 不随 clone 走）**：用密码 SSH 到服务器执行 `git -C /root/chatsystem remote -v` 从 URL 提取 PAT（或向用户索取），配好 remote 后先 `git push origin main` 追平 GitHub。PAT 失效（过期/吊销/转公开仓库被吊销）时更新 remote：`git remote set-url origin https://<PAT>@github.com/Mai-Jun/chatsystem.git` |
-| 本地工作区 | 【旧机】`C:\Users\Mai\.zcode\workspace\default\im-system`（仅编辑与 git，**不能编译**——WSL/VBox 因旧机系统损伤不可用，详见 migration.md）；**新机路径自定，clone 即得** |
-| 便携 git / plink | 【旧机】`C:\PortableGit\`、`C:\WSL\plink.exe`（Windows 侧操作服务器用）；**新机用系统 git/ssh 即可** |
-| **Windows 客户端（旧机 MSYS2，2026-10-07）** | 工具链 MSYS2 @ `C:\msys64`（TUNA 源：Qt 6.11.2 base/websockets/multimedia + protobuf 36.2 + gcc 16.2 + cmake/ninja）；产物 `client/cmake-build-win/`（windeployqt + fix_runtime_dlls.sh 已部署，`im_client.exe` 可直接双击；根目录有快捷方式）。**均为旧机产物不随换机走**：新机按 env.md 坑位条「Windows 侧构建（MSYS2）」重装工具链 + 第六节三步重建 |
+| 本地工作区 | **新机**：`C:\Users\33087\.zcode\workspace\default\chatsystem`（2026-10-08 起；仅编辑与 git，不编译后端——后端始终在服务器上编译）；【旧机已退役】`C:\Users\Mai\...\im-system` |
+| 便携 git / plink | 【旧机】`C:\PortableGit\`、`C:\WSL\plink.exe`（已随旧机退役）；**新机用系统 git/ssh 即可** |
+| **Windows 客户端（新机 MSYS2，2026-10-08 重建）** | 工具链 MSYS2 @ `C:\msys64`（TUNA 源 20260927 base：Qt 6.11.2 base/websockets/multimedia + protobuf 36.2 + gcc 16.2 + cmake 4.4.4/ninja，版本与旧机一致）；产物 `client/cmake-build-win/`（windeployqt + fix_runtime_dlls.sh 已部署，自包含实测通过），`im_client.exe` 可直接双击；根目录快捷方式 `IM即时通讯.lnk` 已重建 |
 
-**重要**：GitHub 推送受本地网络波动影响时好时坏。**服务器 `/root/chatsystem` 是当前最完整的副本**；网络不畅时用 git bundle 走 scp 同步（见第六节）。新机配好带 PAT 的 remote 后先 `git push origin main` 追平 GitHub（旧机直连不通，新机网络未必相同）。
+**重要**：GitHub 推送受本地网络波动影响时好时坏，**新机（2026-10-08）同样直连不通**：本机 push 失败时在服务器上执行 `git -C /root/chatsystem push origin main`（HTTP/1.1 配置已留在服务器仓库）。**服务器 `/root/chatsystem` 是当前最完整的副本**；网络不畅时用 git bundle 走 scp 同步（见第六节）。GitHub 已于 2026-10-08 追平（`63a6b38`）。
 
 ## 四、已完成里程碑与验收证据
 
@@ -129,11 +129,11 @@
   client_smoke/dual_client_push 等控制台测试工具
 - **修复部署不自包含（坑 19）**：新增 `client/fix_runtime_dlls.sh`（ASCII-only），重建后必须跑
 
-**待办（M9 收尾，2026-10-07 第四轮后）**：
-- **新机复工（下一次会话第一件事）**：按 `docs/migration.md` 第二节完成换机初始化（SSH/PAT/
-  clone/push 追平），重建 Windows 客户端（第六节三步 + 根目录快捷方式）并跑 client_smoke 8/8
-  + dual_client_push 40/40 回归，然后继续下面的真机手测
-- **用户真机手测（进行中）**：Windows 客户端已交付（双击项目根目录 `IM即时通讯.lnk`）。
+**待办（M9 收尾，2026-10-08 新机复工后）**：
+- ~~**新机复工**~~ ✅ **完成（2026-10-08）**：SSH 免密/clone+追平（含服务器领先 2 提交的 fetch）/PAT 取证
+  配 remote/GitHub push 追平（本机直连不通，服务器侧 `git config http.version HTTP/1.1` 后重试成功）/
+  MSYS2 重装/客户端三步重建/快捷方式，回归 client_smoke 8/8 + dual_client_push 40/40 + GUI 启动冒烟全过
+- **用户真机手测（进行中）**：Windows 客户端已在新机重建（双击项目根目录 `IM即时通讯.lnk`）。
   用户已提三轮反馈（登录方式、界面美化、退出登录行为/启动便利性），均已落实，等下一轮反馈。
   测试账号：端A `19353589846`/pass123、端B `18353589846`/pass123（两者有
   68 条含四类消息的会话）；造数据：`dual_client_push --send-many <对端> <自己> 20 "demo"`
@@ -190,11 +190,9 @@ cp scripts/gui_test.sh /root/gui_test.sh && tr -d '\r' < /root/gui_test.sh > /ro
 bash /root/gui_test.sh.c 1      # 阶段 1~16：启动/登录/会话/发消息/未读/分页/图片渲染，
                                 # 每阶段截图到 /root/gui_shots/，窗口坐标偏移已按 openbox 标定
 
-# —— Windows 客户端（MSYS2，本机 cmd；GUI 界面迭代时在本机构建验证）——
-# 首次配置（旧机已完成；新机按 env.md 坑位条「Windows 侧构建（MSYS2）」从零重装后再配）：
-# cmake -S client -B client/cmake-build-win -G Ninja
-#   -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DCMAKE_PREFIX_PATH=/mingw64
-set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/Mai/.zcode/workspace/default/im-system && cmake --build client/cmake-build-win && /mingw64/bin/windeployqt.exe --release client/cmake-build-win/im_client.exe && bash client/fix_runtime_dlls.sh"
+# —— Windows 客户端（MSYS2，本机；GUI 界面迭代时在本机构建验证）——
+# 新机已配好（2026-10-08）：工作区 C:\Users\33087\.zcode\workspace\default\chatsystem
+set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/33087/.zcode/workspace/default/chatsystem && cmake --build client/cmake-build-win && /mingw64/bin/windeployqt.exe --release client/cmake-build-win/im_client.exe && bash client/fix_runtime_dlls.sh"
 # fix_runtime_dlls.sh 必跑：windeployqt 不复制编译器运行时与 protobuf/abseil DLL（坑 19），
 # 脚本幂等，扫 exe+全部 DLL 的导入闭包从 /mingw64/bin 补齐到 exe 目录
 # 运行：双击项目根目录 IM即时通讯.lnk（或 client\cmake-build-win\im_client.exe，已自包含）
@@ -257,3 +255,4 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 - M9 第三轮：Windows 交付链路固定为「cmake --build → windeployqt --release」两步，产物自包含可直接双击；用户反馈迭代时在 Windows 侧直接重建，服务器侧仅作协议回归（client_smoke + dual_client_push）。
 - M9 第四轮决策（2026-10-07，用户反馈驱动）：①退出登录**不退出进程**，改为登录页/主窗口两函数互相切换、窗口均 WA_DeleteOnClose 循环重建（重新登录可能是另一个账号，主窗/聊天窗状态必须全新）；登出即 disconnect_push + 删本地 token，重登后 connect_push 以新 token 重新鉴权。②部署链路固定为「cmake --build → windeployqt → fix_runtime_dlls.sh」三步（windeployqt 不复制运行时依赖，见坑 19）。③服务器地址视为内置配置（默认 47.112.192.119:9000，登录页可改持久化），客户端不提供命令行参数入口。
 - 交接基线（2026-10-07，M9 第四轮后旧机退役）：**下一次会话在新机器开工**，第一步按 migration.md 第二节完成初始化并 `git push` 追平 GitHub。当前代码状态：本地 main = 服务器 `/root/chatsystem` = `9acee19`，GitHub 落后（旧机直连不通，经 bundle+scp 同步服务器）。旧机绑定资产（MSYS2 工具链/exe/快捷方式/SSH 密钥/PAT 文件）已在第三节标注，均可在新机重建或重新取证；**项目全部运行状态（服务、容器、数据）在服务器上，换机零损失**。
+- 新机复工完成（2026-10-08）：①SSH 用密码过渡一次、paramiko 装本机 ed25519 公钥（bootstrap 脚本即用即删，未入库）；②本机 clone 走 gh-proxy（直连 GitHub 不通），后用 `git fetch ssh://root@47.112.192.119/root/chatsystem main` 直接追平服务器领先提交（比 bundle+scp 省事，推荐）；③PAT 从服务器 remote URL 提取，存 `docs/github_pat.local`（gitignore 生效已验）；④push 本机不通 → 服务器侧 `git config http.version HTTP/1.1` 后重试成功（HTTP/2 流错误是"时好时坏"的真面目，该配置已留在服务器仓库）；⑤MSYS2 从 TUNA 重装（20260927 sfx 仅 42MB，mirrorlist 已合并为 mirrorlist.mingw/mirrorlist.msys 两个文件），包集合与旧机一致，Qt 6.11.2/protobuf 36.2/gcc 16.2 版本零漂移；⑥`fix_runtime_dlls.sh` 硬编码旧机绝对路径改为脚本相对路径（可移植修复）；新机实测部署收敛后仍缺一颗 absl 传递依赖（libabsl_crc_internal，疑似扫描时文件被占用），**重跑一遍 fix 脚本即补齐**——部署后回归务必用「干净 PATH」验一次（`PATH='/c/Windows/System32:/c/Windows:/usr/bin' ./client_smoke ...`）。
