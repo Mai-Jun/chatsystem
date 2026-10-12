@@ -120,7 +120,9 @@ SSH 再次进入横幅超时（约 01:15）。
 2. **停 ES**（`docker stop im-es`）→ 重建 `message_storage_server`（systemd-run -j1）→
    `docker restart im-message-storage-server` → 起 ES；
 3. ES 搜索主路径复验（日志出现 `ok(es)`）+ 停 ES 降级复验；
-4. 服务器侧 `git fetch`（从本地）→ `git push origin main` 代推 GitHub；
+4. ~~服务器侧 `git fetch` → `git push origin main` 代推 GitHub~~ ✅ **已由本地直推完成**
+   （04:38 网络窗口期直连 GitHub 成功，`de87318..76e9844` 全部上仓——推送不再依赖服务器，
+   服务器恢复后仅需普通 `git fetch origin main` 追平）；
 5. 公网 Windows 双端验证 + checklist/自检报告终稿。
 
 **纪律根本修正**（本轮三次事故的最终结论）：这台 2核1.6G 服务器上的**任何编译动作前，必须先
