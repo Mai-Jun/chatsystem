@@ -112,6 +112,21 @@ SSH 再次进入横幅超时（约 01:15）。
 **处理**：等待服务器自行恢复（内存漂移类抖动通常较快恢复），恢复后按
 「停 ES → 重建 → 重启 → 起 ES → ES 搜索复验」串行执行。
 
+**D7-状态更新（2026-10-13 04:25）**：**本次未自行恢复**——失联持续 3 小时+（02:00~04:25 多次
+探测：ping 通 15ms、22 不通、9000/9001 TCP 可建连但应用层无响应），超出前两次（D1/D5）的
+2~2.5 小时恢复窗口。判定需要再次人工重启服务器（与 D1 处置相同）。恢复后剩余收尾项：
+1. `docker start im-es` 之前先确认各容器状态（重启后全部 Exited，先 `docker compose -f
+   docker/docker-compose.prod.yml up -d` 拉起全栈）；
+2. **停 ES**（`docker stop im-es`）→ 重建 `message_storage_server`（systemd-run -j1）→
+   `docker restart im-message-storage-server` → 起 ES；
+3. ES 搜索主路径复验（日志出现 `ok(es)`）+ 停 ES 降级复验；
+4. 服务器侧 `git fetch`（从本地）→ `git push origin main` 代推 GitHub；
+5. 公网 Windows 双端验证 + checklist/自检报告终稿。
+
+**纪律根本修正**（本轮三次事故的最终结论）：这台 2核1.6G 服务器上的**任何编译动作前，必须先
+`docker stop im-es`**（无论 ES 当前是否"稳定运行"）；大规模容器操作（镜像构建/切换）与编译
+互斥。后续若频繁迭代，建议临时升配到 4G 或把编译迁到本地交叉/CI（PLAN 已有 prod-full 档位评估）。
+
 
 ---
 
