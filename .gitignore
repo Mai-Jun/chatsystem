@@ -6,6 +6,9 @@ cmake-build-*/
 *.so
 third_party/httplib.h
 
+# 运行镜像构建上下文（prepare_runtime_image.sh 从 /usr/local 拷入的动态库）
+docker/lib/
+
 # 本地私有配置（数据库密码、云服务 AccessKey 等）
 conf/*.local.flags
 *.local

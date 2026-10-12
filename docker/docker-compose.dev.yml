@@ -71,7 +71,9 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
-      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # 服务器 2核1.6G 实测：512m 堆叠全栈会触发 swap 抖动致 sshd 假死（docs/deviation-log D1/D5），
+      # 降为 256m；4G+ 机型可回到 512m。
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
     ports:
       - "9200:9200"
     volumes:

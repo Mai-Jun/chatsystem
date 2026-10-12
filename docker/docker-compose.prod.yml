@@ -1,0 +1,241 @@
+# ============================================================
+# 生产栈（M10 部署固化）：基础设施 + 7 个应用服务，全部 restart: unless-stopped
+#
+# 首次部署 / 应用服务重建：
+#   bash scripts/prepare_runtime_image.sh          # 构建 im-runtime:1.0（运行镜像）
+#   docker compose -f docker/docker-compose.prod.yml up -d
+# 日常操作：
+#   docker compose -f docker/docker-compose.prod.yml ps / logs -f <svc> / restart <svc>
+#
+# 说明：
+#   - 应用服务用 host 网络：单机部署零改动（服务间走 127.0.0.1、etcd 注册
+#     127.0.0.1:port 直接可达、客户端 9000/9001 直连宿主）。
+#   - 代码更新无需重建镜像：/root/chatsystem 整目录挂载到 /app，
+#     `cmake --build build -j1` 后 `docker compose ... restart <svc>` 即生效。
+#   - 数据卷沿用 dev 栈既有卷（im-system-dev_*）：dev/prod 两栈共用同一份数据，
+#     同端口不可同时运行（迁移见 docs/HANDOFF.md）。
+#   - speech_server 如需百度 ASR 正式识别，另建 conf/speech_server.local.flags 并
+#     在该服务 command 追加第三个 --flagfile（gflags 对不存在的 flagfile 会报错，
+#     故不默认追加）。
+# ============================================================
+name: im-system-prod
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ==================== 基础设施 ====================
+  mysql:
+    image: mysql:8.0
+    container_name: im-mysql
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MYSQL_ROOT_PASSWORD: im123456
+      MYSQL_DATABASE: im_system
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --performance-schema=OFF
+      - --wait_timeout=604800
+      - --interactive_timeout=604800
+    ports:
+      - "3306:3306"
+    volumes:
+      - im-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h127.0.0.1", "-uroot", "-pim123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.2
+    container_name: im-redis
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.16
+    container_name: im-etcd
+    restart: unless-stopped
+    logging: *default-logging
+    command:
+      - etcd
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://0.0.0.0:2379
+    ports:
+      - "2379:2379"
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: im-rabbitmq
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # 管理台 http://127.0.0.1:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  elasticsearch:
+    build:
+      context: .
+      dockerfile: elasticsearch.Dockerfile
+    image: im-es-7.17.23-ik
+    container_name: im-es
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      # 服务器 2核1.6G：ES 堆降到 256m（M10 实测；dev 的 512m 配置在此尺寸下
+      # 叠加 MySQL/RabbitMQ 会触发 swap 抖动）。需要更宽裕的搜索性能时用 4G+ 机型。
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - im-es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # ==================== 应用服务（im-runtime + host 网络） ====================
+  user_server:
+    image: im-runtime:1.0
+    container_name: im-user-server
+    network_mode: host
+    restart: unless-stopped
+    logging: *default-logging
+    working_dir: /app
+    volumes:
+      - /root/chatsystem:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_started
+    command: ["./build/server/user_server/user_server", "--flagfile=conf/common.flags", "--flagfile=conf/user_server.flags"]
+
+  friend_server:
+    image: im-runtime:1.0
+    container_name: im-friend-server
+    network_mode: host
+    restart: unless-stopped
+    logging: *default-logging
+    working_dir: /app
+    volumes:
+      - /root/chatsystem:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      etcd:
+        condition: service_started
+    command: ["./build/server/friend_server/friend_server", "--flagfile=conf/common.flags", "--flagfile=conf/friend_server.flags"]
+
+  message_storage_server:
+    image: im-runtime:1.0
+    container_name: im-message-storage-server
+    network_mode: host
+    restart: unless-stopped
+    logging: *default-logging
+    working_dir: /app
+    volumes:
+      - /root/chatsystem:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      etcd:
+        condition: service_started
+    command: ["./build/server/message_storage_server/message_storage_server", "--flagfile=conf/common.flags", "--flagfile=conf/message_storage_server.flags"]
+
+  message_server:
+    image: im-runtime:1.0
+    container_name: im-message-server
+    network_mode: host
+    restart: unless-stopped
+    logging: *default-logging
+    working_dir: /app
+    volumes:
+      - /root/chatsystem:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      etcd:
+        condition: service_started
+    command: ["./build/server/message_server/message_server", "--flagfile=conf/common.flags", "--flagfile=conf/message_server.flags"]
+
+  gateway_server:
+    image: im-runtime:1.0
+    container_name: im-gateway-server
+    network_mode: host
+    restart: unless-stopped
+    logging: *default-logging
+    working_dir: /app
+    volumes:
+      - /root/chatsystem:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      etcd:
+        condition: service_started
+    command: ["./build/server/gateway_server/gateway_server", "--flagfile=conf/common.flags", "--flagfile=conf/gateway_server.flags"]
+
+  file_server:
+    image: im-runtime:1.0
+    container_name: im-file-server
+    network_mode: host
+    restart: unless-stopped
+    logging: *default-logging
+    working_dir: /app
+    volumes:
+      - /root/chatsystem:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      etcd:
+        condition: service_started
+    command: ["./build/server/file_server/file_server", "--flagfile=conf/common.flags", "--flagfile=conf/file_server.flags"]
+
+  speech_server:
+    image: im-runtime:1.0
+    container_name: im-speech-server
+    network_mode: host
+    restart: unless-stopped
+    logging: *default-logging
+    working_dir: /app
+    volumes:
+      - /root/chatsystem:/app
+    depends_on:
+      etcd:
+        condition: service_started
+    command: ["./build/server/speech_server/speech_server", "--flagfile=conf/common.flags", "--flagfile=conf/speech_server.flags"]
+
+volumes:
+  # 显式沿用 dev 栈既有卷（数据不丢）；全新部署时自动创建同名卷
+  im-mysql-data:
+    name: im-system-dev_im-mysql-data
+  im-es-data:
+    name: im-system-dev_im-es-data
