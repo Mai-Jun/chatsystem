@@ -1,14 +1,16 @@
 # 交接文档（HANDOFF）——新会话从这里开始
 
-> 更新：2026-10-08（新机初始化完成，M9 第四轮后）。本文件是跨会话续接开发的**唯一权威入口**，每次阶段推进后更新。
-> **换机已完成（2026-10-08）**：新机（`C:\Users\33087`）SSH/clone/push 追平/MSYS2 工具链/Windows 客户端重建
-> 全部就绪并通过回归（client_smoke 8/8 + dual_client_push 40/40 + GUI 启动冒烟），过程见 migration.md 第二节勾选。
+> 更新：2026-10-13（M10 部署固化轮次，进行中——服务器经历三次资源抖动，收尾清单见下）。
+> 本文件是跨会话续接开发的**唯一权威入口**，每次阶段推进后更新。
+> **最新轮次速览（2026-10-12~13）**：M10 主体完成——7 服务容器化（`docker-compose.prod.yml`，
+> restart 自愈实测通过）、全量回归 4/4 全绿（容器形态）、ES 256m 堆上机（1.6G 机器实测稳定）
+> + 存量回填；修 3 个真 bug（同秒排序 seq / 网关 MQ 桥接永不重试 / ES 查询 JSON 括号）；
+> 客户端离线自检（Mock 网关）+ 时间戳去噪优化。**剩余**：ES 搜索主路径复验、公网双端终验、
+> 文档/推送收尾——逐项见 `docs/checklist.md` 与 `docs/self-check-2026-10-12.md` 第六节。
 
 ## 一、30 秒了解现状
 
-**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**，服务器上 7 个子服务正在运行。**M9 Qt 客户端已完成并验证（2026-10-07 四轮迭代）**：文本/图片/文件/语音四类消息、未读计数、历史分页、头像、账号密码+验证码双登录、微信风格界面全部就绪；第四轮落实用户反馈：退出登录回到登录/注册页（不再退出程序）、登录页预填手机号、项目根目录快捷方式 `IM即时通讯.lnk` 双击即用、修复部署不自包含（0xC0000135 坑 19）。协议冒烟 8/8、双客户端 40/40、无头 GUI 截图逐项验证；Windows 客户端已重建并经 UIA 实机验证（自动登录→退出→登录页→重登→推送已连接 全链路）。剩余：真机手测收尾（进行中）→ 录音真机验证 → **M10 部署固化**（含 ES 上服务器）。
-
-剩余：**M9 Qt 桌面客户端（剩余部分）→ M10 部署固化**（含 ES 上服务器）。
+**分布式 IM 系统的完整后端已在阿里云服务器上开发、构建、验收通过**。里程碑 M0（环境）→ M1（公共库）→ M2（文件服务）→ M3（用户服务）→ M4（网关）→ M5（好友）→ M6（消息存储）→ M7（消息转发+MQ 广播）→ M8（语音子服务）**全部完成并验收**；**M9 Qt 客户端完成**（四轮迭代 + 本地自检轮：四类消息/未读/分页/头像/双登录/微信风界面/时间戳去噪，Mock 网关离线全界面可自检）；**M10 部署固化主体完成**（容器化 + ES 上机 + 自愈验证 + 联调清单）。协议冒烟 8/8、双客户端 41/41（含同秒排序断言）、无头 GUI 截图、容器形态全量回归 4/4 均已通过。剩余：ES 搜索主路径复验 + 公网双端终验 + 录音真机验证（用户手测）。
 
 ## 二、新会话续接三步
 
@@ -157,6 +159,27 @@
 ## 六、操作手册（服务器常用命令）
 
 ```bash
+# ============================================================
+# 【当前形态：容器化生产栈（M10 起）】——日常操作
+# ============================================================
+cd /root/chatsystem
+docker compose -f docker/docker-compose.prod.yml ps        # 查看 12 服务状态
+docker compose -f docker/docker-compose.prod.yml logs -f gateway_server  # 看日志
+docker compose -f docker/docker-compose.prod.yml restart gateway_server   # 重启单服务
+# 代码更新：服务器上编译后重启对应容器（挂载目录，无需重建镜像）：
+#   systemd-run --scope --quiet -p MemoryMax=1100M nice -n 19 cmake --build build -j1 --target <svc>
+#   docker compose -f docker/docker-compose.prod.yml restart <svc>
+# 【重要纪律】编译前先 docker stop im-es（ES 内存释放），编译完再 docker compose ... up -d elasticsearch
+# ES 管理：docker start/stop im-es；搜索走 ES 时日志见 storage 服务的 "ok(es)"
+# 存量消息回填 ES：bash scripts/backfill_es.sh（重建索引后跑一次）
+# 自愈验证：宿主机 kill -9 <容器主进程 PID> → docker inspect 看 RestartCount；
+#   注意 docker stop/kill 属"手动停止"策略故意不重启（Docker 语义），容器内 kill -1 会被 PID 命名空间保护
+
+# ============================================================
+# 【备用形态：dev 裸进程 + dev compose（M9 前）】——需要时切回
+# ============================================================
+# bash scripts/switch_to_prod.sh 是 dev→prod 一键切换（含停裸进程、停 dev 栈、起 prod 栈）
+
 # —— 代码同步（本地 → 服务器，网络不畅时的可靠路径）——
 # 本地: git bundle create C:\WSL\incoming.bundle main
 # 本地: scp -i ~/.ssh/im_dev_key C:\WSL\incoming.bundle root@47.112.192.119:/root/incoming.bundle
