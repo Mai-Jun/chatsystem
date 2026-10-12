@@ -171,16 +171,17 @@ class MsgStorageServiceImpl : public MsgStorageService {
     try {
       odb::transaction t(db_->begin());
       std::vector<Message> page;
-      // ODB 原生 SQL 片段用 + 拼接（&& 只接受查询表达式），且必须加括号保证优先级
+      // ODB 原生 SQL 片段用 + 拼接（&& 只接受查询表达式），且必须加括号保证优先级；
+      // ORDER BY 追加 seq（存储层自增键）作同秒内的稳定次序键
       if (req->cursor_timestamp() > 0) {
         auto q = (odb::query<Message>::session_id == req->chat_session_id() &&
                   odb::query<Message>::create_time < req->cursor_timestamp()) +
-                 "ORDER BY create_time DESC LIMIT " + std::to_string(limit);
+                 "ORDER BY create_time DESC, seq DESC LIMIT " + std::to_string(limit);
         auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) page.push_back(*it);
       } else {
         auto q = (odb::query<Message>::session_id == req->chat_session_id()) +
-                 "ORDER BY create_time DESC LIMIT " + std::to_string(limit);
+                 "ORDER BY create_time DESC, seq DESC LIMIT " + std::to_string(limit);
         auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) page.push_back(*it);
       }
@@ -218,9 +219,11 @@ class MsgStorageServiceImpl : public MsgStorageService {
         }
         return o;
       };
+      // 注意括号：此处只关闭 multi_match 两层对象，must 数组保持打开——
+      // 会话过滤 term 与最后的 "]}}" 一起收尾（多一个 ']' 会产生非法 JSON，ES 一律 400）
       std::string query =
           "{\"size\":100,\"query\":{\"bool\":{\"must\":[{\"multi_match\":{\"query\":\"" +
-          esc(req->keyword()) + "\",\"fields\":[\"content\",\"asr_text\"]}}]";
+          esc(req->keyword()) + "\",\"fields\":[\"content\",\"asr_text\"]}}";
       if (!req->chat_session_id().empty()) {
         query += ",{\"term\":{\"session_id\":\"" + esc(req->chat_session_id()) + "\"}}";
       }
@@ -258,14 +261,14 @@ class MsgStorageServiceImpl : public MsgStorageService {
       if (req->chat_session_id().empty()) {
         auto q = (odb::query<Message>::content.like(cond) ||
                   odb::query<Message>::asr_text.like(cond)) +
-                 "ORDER BY create_time ASC LIMIT 100";
+                 "ORDER BY create_time ASC, seq ASC LIMIT 100";
         auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) hits.push_back(*it);
       } else {
         auto q = ((odb::query<Message>::content.like(cond) ||
                    odb::query<Message>::asr_text.like(cond)) &&
                   odb::query<Message>::session_id == req->chat_session_id()) +
-                 "ORDER BY create_time ASC LIMIT 100";
+                 "ORDER BY create_time ASC, seq ASC LIMIT 100";
         auto rs = db_->query<Message>(q);
         for (auto it = rs.begin(); it != rs.end(); ++it) hits.push_back(*it);
       }

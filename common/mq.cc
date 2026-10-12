@@ -156,6 +156,8 @@ bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
   timeval tv = one_sec_tv();
   amqp_maybe_release_buffers(conn);
   int rc_wait = amqp_simple_wait_frame_noblock(conn, &frame, &tv);
+  // 空闲超时是正常状态（无消息），不是连接故障——否则空闲 3 秒就会触发无谓重连
+  if (rc_wait == AMQP_STATUS_TIMEOUT) return true;
   if (rc_wait != AMQP_STATUS_OK) return false;
 
   if (frame.frame_type != AMQP_FRAME_METHOD) return true;
@@ -184,20 +186,21 @@ bool MqSubscriber::consume_once(amqp_connection_state_t conn) {
 
 bool MqSubscriber::start() {
   if (running_) return true;
-  // 连接与声明在调用线程同步完成，避免"发布早于绑定"的竞态
-  if (!open_connection(host_, port_, user_, password_, &conn_)) {
-    LOG_WARN("MQ 消费连接失败");
-    return false;
-  }
-  if (!setup(conn_)) {
-    LOG_WARN("MQ 声明失败");
-    close_connection(conn_);
-    conn_ = nullptr;
-    return false;
+  // 先同步尝试连接与声明（RabbitMQ 已就绪时立即完成，缩小"发布早于绑定"的竞态窗口）；
+  // 失败不再直接放弃——容器编排下服务启动顺序不定（网关可能先于 RabbitMQ 就绪），
+  // 消费线程的 connect_retry 会持续重试直到成功（否则实时推送链路永久缺失，
+  // 与 M10"掉线自愈"目标冲突）。
+  bool ready = open_connection(host_, port_, user_, password_, &conn_) && setup(conn_);
+  if (!ready) {
+    LOG_WARN("MQ 消费连接暂不可用，进入后台重试（实时推送将在连接恢复后自动启用）");
+    if (conn_ != nullptr) {  // setup 失败时连接是通的，一并清掉走统一重连路径
+      close_connection(conn_);
+      conn_ = nullptr;
+    }
   }
   running_ = true;
   thread_ = std::thread([this]() { consume_loop(); });
-  return true;
+  return ready;
 }
 
 void MqSubscriber::stop() {
@@ -211,6 +214,22 @@ void MqSubscriber::stop() {
 void MqSubscriber::consume_loop() {
   int fails = 0;
   while (running_) {
+    // 启动时连接可能尚未就绪（RabbitMQ 未起或抖动）：先补一次连接+声明
+    if (conn_ == nullptr) {
+      if (!open_connection(host_, port_, user_, password_, &conn_)) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        continue;
+      }
+      if (!setup(conn_)) {
+        LOG_WARN("MQ 声明失败，2 秒后重试");
+        close_connection(conn_);
+        conn_ = nullptr;
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        continue;
+      }
+      LOG_INFO("MQ 消费连接就绪（实时推送已启用）");
+      fails = 0;
+    }
     if (!consume_once(conn_)) {
       if (!running_) break;
       // 连续失败视为连接异常：断开重连
@@ -219,16 +238,6 @@ void MqSubscriber::consume_loop() {
         fails = 0;
         close_connection(conn_);
         conn_ = nullptr;
-        while (running_ && !open_connection(host_, port_, user_, password_, &conn_)) {
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-        }
-        while (running_ && !setup(conn_)) {
-          LOG_WARN("MQ 声明失败，2 秒后重试");
-          close_connection(conn_);
-          conn_ = nullptr;
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-          open_connection(host_, port_, user_, password_, &conn_);
-        }
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
       continue;

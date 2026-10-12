@@ -82,7 +82,8 @@ std::shared_ptr<void> start_mq_bridge(WsPusher* pusher, const std::string& insta
         }
       });
   if (!sub->start()) {
-    LOG_ERROR("MQ 桥接启动失败（离线用户将收不到实时推送，登录后拉历史可补齐）");
+    // 连接未就绪不是终态：订阅线程会持续重试，RabbitMQ 恢复后自动启用
+    LOG_WARN("MQ 桥接暂未就绪（订阅线程后台重试中；实时推送将在连接恢复后自动启用）");
   }
   return sub;
 }

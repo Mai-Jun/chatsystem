@@ -75,8 +75,10 @@ CREATE TABLE IF NOT EXISTS `message` (
   `file_size`   BIGINT       NOT NULL DEFAULT 0,
   `asr_text`    TEXT         NULL COMMENT '语音转写文本',
   `create_time` BIGINT      NOT NULL DEFAULT 0,
+  `seq`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '存储层排序键（同秒稳定序，非业务字段）',
   PRIMARY KEY (`id`),
-  KEY `idx_session_time` (`session_id`, `create_time`)
+  KEY `idx_session_time` (`session_id`, `create_time`),
+  UNIQUE KEY `uk_seq` (`seq`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息表';
 
 -- 群聊事件表（第 8 张表，M5 新增）
