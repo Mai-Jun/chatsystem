@@ -28,7 +28,7 @@
 | 服务器代码 | `/root/chatsystem`（main 分支，HEAD=7c5fbe7 附近，含全部功能代码） |
 | 服务器构建产物 | `/root/chatsystem/build/`（7 个服务 + 测试工具） |
 | GitHub | `Mai-Jun/chatsystem`（私有）。**PAT 已由用户记录在项目内两处（均不入 git 仓库）**：① 本地与服务器的 origin remote URL 已内置 PAT——`git push/fetch origin` 直接可用；② 本地明文备份 `docs/github_pat.local`（被 `.gitignore` 的 `*.local` 规则忽略）。**raw PAT 不能写进任何 git 跟踪文件**：GitHub push protection 会拒绝携带密钥的推送（2026-10-07 实测）。**新机首次 clone 有死循环（clone 需要 PAT，而 ② 不随 clone 走）**：用密码 SSH 到服务器执行 `git -C /root/chatsystem remote -v` 从 URL 提取 PAT（或向用户索取），配好 remote 后先 `git push origin main` 追平 GitHub。PAT 失效（过期/吊销/转公开仓库被吊销）时更新 remote：`git remote set-url origin https://<PAT>@github.com/Mai-Jun/chatsystem.git` |
-| 本地工作区 | **新机**：`C:\Users\33087\.zcode\workspace\default\chatsystem`（2026-10-08 起；仅编辑与 git，不编译后端——后端始终在服务器上编译）；【旧机已退役】`C:\Users\Mai\...\im-system` |
+| 本地工作区 | **2026-10-12 起**：`D:\Project\chatsystem`（工作副本已从 C: 迁到 D:；`C:\Users\33087\.zcode\workspace\default\chatsystem` 仅剩空目录。仅编辑与 git，不编译后端——后端始终在服务器上编译；Windows 客户端在本机 MSYS2 构建）；【旧机已退役】`C:\Users\Mai\...\im-system` |
 | 便携 git / plink | 【旧机】`C:\PortableGit\`、`C:\WSL\plink.exe`（已随旧机退役）；**新机用系统 git/ssh 即可** |
 | **Windows 客户端（新机 MSYS2，2026-10-08 重建）** | 工具链 MSYS2 @ `C:\msys64`（TUNA 源 20260927 base：Qt 6.11.2 base/websockets/multimedia + protobuf 36.2 + gcc 16.2 + cmake 4.4.4/ninja，版本与旧机一致）；产物 `client/cmake-build-win/`（windeployqt + fix_runtime_dlls.sh 已部署，自包含实测通过），`im_client.exe` 可直接双击；根目录快捷方式 `IM即时通讯.lnk` 已重建 |
 
@@ -191,8 +191,11 @@ bash /root/gui_test.sh.c 1      # 阶段 1~16：启动/登录/会话/发消息/�
                                 # 每阶段截图到 /root/gui_shots/，窗口坐标偏移已按 openbox 标定
 
 # —— Windows 客户端（MSYS2，本机；GUI 界面迭代时在本机构建验证）——
-# 新机已配好（2026-10-08）：工作区 C:\Users\33087\.zcode\workspace\default\chatsystem
-set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/33087/.zcode/workspace/default/chatsystem && cmake --build client/cmake-build-win && /mingw64/bin/windeployqt.exe --release client/cmake-build-win/im_client.exe && bash client/fix_runtime_dlls.sh"
+# 2026-10-12 起工作副本在 D:\Project\chatsystem（C: 工作区已废弃）；
+# 若曾从 C: 迁移目录，先删 client/cmake-build-win 重配（缓存的源码路径失效）：
+#   cmake -S client -B client/cmake-build-win -G Ninja -DCMAKE_BUILD_TYPE=Release \
+#         -DCMAKE_CXX_STANDARD=20 -DCMAKE_PREFIX_PATH=C:/msys64/mingw64
+set MSYSTEM=MINGW64&& C:\msys64\usr\bin\bash.exe -lc "cd /d/Project/chatsystem && cmake --build client/cmake-build-win && /mingw64/bin/windeployqt.exe --release client/cmake-build-win/im_client.exe && bash client/fix_runtime_dlls.sh && bash client/fix_runtime_dlls.sh"
 # fix_runtime_dlls.sh 必跑：windeployqt 不复制编译器运行时与 protobuf/abseil DLL（坑 19），
 # 脚本幂等，扫 exe+全部 DLL 的导入闭包从 /mingw64/bin 补齐到 exe 目录
 # 运行：双击项目根目录 IM即时通讯.lnk（或 client\cmake-build-win\im_client.exe，已自包含）
@@ -232,6 +235,10 @@ curl -s -X POST http://127.0.0.1:2379/v3/kv/range -H 'Content-Type: application/
 18. **GUI 界面验证工作流**：服务器 Xvfb 截图初检 → 发现疑点用「裁图放大 + 点击实验」定位（例：按钮看不见时，往输入框打字点空白槽位，消息上屏即证明按钮存在只是没画出来）→ 修复后**必须重启客户端再截图**（ChatWindow 关闭只是 hide，旧进程截图会误导）。每次改 UI 后窗口尺寸/控件位置会变，gui_test.sh 的偏移量要按截图重标定。
 19. **windeployqt 产物不自包含**：它不复制编译器运行时（libgcc_s_seh-1/libstdc++-6/libwinpthread-1）和 protobuf/abseil 系 DLL（exe 直接导入，只有 exe 依赖它们），且二次运行因「已是最新」全部跳过。症状：双击报「找不到 xxx.dll」或静默退出（退出码 0xC0000135）。此前"可直接双击"是因启动环境 PATH 恰好含 MSYS2，换环境即挂。补齐脚本 `client/fix_runtime_dlls.sh`（ASCII-only）：扫 exe+全部 DLL 的导入表，从 /mingw64/bin 递归补齐到 exe 目录直到收敛；结果里 UNRESOLVED 的 `api-ms-win-*` 是系统虚拟 API 集，属正常。
 20. **PowerShell UIAutomation 可驱动 Qt 客户端做 Windows 实机 GUI 验证**：Qt 控件名（如「退出登录」按钮）可被 UIA 识别，按钮 InvokePattern.Invoke、输入框 ValuePattern.SetValue，无需坐标点击；配合截图可全自动走「登录→退出→重登」链路。注意：通过 -Command 传中文串安全（命令行是 UTF-16），但 .ps1 文件内容必须 ASCII-only（同坑 12）。
+21. **2核1.6G 服务器「重型操作严格串行」**（D1/D5 事故，详见 deviation-log）：`编译` / `镜像拉取解包` / `容器构建`/`ES 启动` 任何时候只允许一件在进行；重型操作前先停 ES 等大件释放内存（`docker stop im-es`），完成后再回归。实测：ES(512m) + 全栈 → used 1283M/avail 135M，随后 sshd 假死约 2 小时（用户手动重启才恢复）。SSH 假死特征：ping 通、TCP 22 可建连、横幅不返回——遇此停止一切重试，单来源低频探针等待，勿重启容器加重 IO。
+22. **compose 的 environment 改动只对新建容器生效**：对 Exited 旧容器 `docker start` 会沿用旧配置（D5 即此陷阱：dev 容器仍是 512m 堆）。改配置后用 `docker compose up -d --force-recreate <svc>`；验证前先 `docker inspect` 看实际 Env。
+23. **服务器 9200 未对公网放行属正常**：ES 只能从服务器内部验证（`ssh ... curl 127.0.0.1:9200`），不能用「本地 curl 9200 不通」推断 ES 故障（D5 误判来源）。同理 10001~10006 后端端口仅内侧可达，公网只有 9000/9001。
+24. **message 表同秒排序**（M10 已修）：`seq BIGINT AUTO_INCREMENT` 列为存储层排序键（不进 proto/ODB 实体，ODB 生成的列清单会忽略它），查询 `ORDER BY create_time DESC, seq DESC`；迁移 `sql/migration_0002_message_seq.sql`（存量库）与 im_system.sql 建表语句（全新库）双轨。
 
 ## 八、会话内决策记录（增量）
 
