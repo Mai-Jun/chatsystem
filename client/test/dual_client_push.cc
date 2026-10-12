@@ -10,6 +10,7 @@
 #include <QEventLoop>
 #include <QTimer>
 
+#include <algorithm>
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
@@ -702,6 +703,48 @@ int main(int argc, char* argv[]) {
     bool ok = sync_call(client_b, REQ_TYPE_GET_HISTORY, req, &resp, &err) && resp.success();
     check(ok && resp.messages_size() == 5,
           QString("历史消息数 = 5（实际 %1）").arg(resp.messages_size()).toStdString());
+  }
+
+  // ---- ⑪ 同秒连发顺序稳定性：12 条文本快速连发 → 历史顺序应与发送顺序一致 ----
+  {
+    const int kSeqCount = 12;
+    int sent = 0;
+    for (int i = 0; i < kSeqCount; ++i) {
+      char text[16];
+      snprintf(text, sizeof(text), "seqtest-%02d", i);
+      MsgTransmitReq req;
+      req.set_chat_session_id(session_id);
+      req.mutable_content()->set_type(MESSAGE_TYPE_TEXT);
+      req.mutable_content()->set_content(text);
+      MsgTransmitResp resp;
+      if (sync_call(client_a, REQ_TYPE_TRANSMIT_MESSAGE, req, &resp, &err) && resp.success()) ++sent;
+    }
+
+    GetHistoryReq req;
+    req.set_chat_session_id(session_id);
+    req.set_cursor_timestamp(0);
+    req.set_limit(50);
+    GetHistoryResp resp;
+    const bool ok = sync_call(client_a, REQ_TYPE_GET_HISTORY, req, &resp, &err) && resp.success();
+
+    std::vector<int> order;
+    std::vector<qint64> secs;
+    if (ok) {
+      for (const auto& m : resp.messages()) {
+        if (m.content().rfind("seqtest-", 0) != 0) continue;
+        order.push_back(atoi(m.content().substr(8).c_str()));
+        secs.push_back(m.create_time());
+      }
+    }
+    bool in_order = sent == kSeqCount && order.size() == static_cast<size_t>(kSeqCount);
+    for (size_t i = 0; in_order && i < order.size(); ++i) {
+      in_order = (order[i] == static_cast<int>(i));
+    }
+    check(in_order, "同秒连发 12 条：历史顺序与发送顺序一致");
+
+    std::sort(secs.begin(), secs.end());
+    secs.erase(std::unique(secs.begin(), secs.end()), secs.end());
+    printf("      12 条 seqtest 消息跨 %zu 个秒级时间戳（信息行，不断言）\n", secs.size());
   }
 
   printf("\n=== 双客户端推送验证: %d 项失败 ===\n", g_failures);

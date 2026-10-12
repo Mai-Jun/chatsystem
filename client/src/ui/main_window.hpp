@@ -45,6 +45,7 @@ class MainWindow : public QMainWindow {
   ChatWindow* chat_window_for(const QString& session_id, const QString& display_name);
   void on_push(int type, const QByteArray& body);
   QString display_name_for(const im::ChatSessionInfo& s);
+  void refresh_session_member(const QString& session_id);  // 单聊：异步刷新对方昵称/头像
 
   void on_session_seen(const QString& session_id);
   void update_session_item(const QString& session_id);

@@ -37,6 +37,9 @@ class ChatWindow : public QDialog {
   // 主窗口收到 NEW_MESSAGE 推送时转发进来（body = MessageInfo 序列化）
   void on_message_push(const QByteArray& body);
 
+  // 重开窗口 / WS 重连后补拉最新页并合并显示（按 message_id 去重，失败静默）
+  void sync_latest();
+
  signals:
   void seen(const QString& session_id);  // 该会话被用户看到（清未读）
 
@@ -47,9 +50,12 @@ class ChatWindow : public QDialog {
  private:
   void load_members();
   void load_history(int64_t cursor);
+  void sync_latest_page(int64_t cursor, int round);  // sync_latest 的第 round 轮分页
+  void finish_sync_latest();
   void insert_row(const im::MessageInfo& msg, int index);
+  void refresh_row_time(int index);  // 前驱变化后重算某行时间戳可见性
   void rebuild_row(const QString& message_id);
-  QWidget* build_row(const im::MessageInfo& msg);
+  QWidget* build_row(const im::MessageInfo& msg, bool show_time);
   QWidget* build_bubble(const im::MessageInfo& msg, bool mine);
   QString sender_display_name(const im::MessageInfo& msg) const;
   void on_push_message(const im::MessageInfo& msg);
@@ -98,6 +104,8 @@ class ChatWindow : public QDialog {
   bool no_more_history_ = false;
   bool loading_history_ = false;
   bool group_chat_ = false;  // 会话成员数 > 2 时显示发送者昵称
+  bool syncing_latest_ = false;                    // sync_latest 防重入（与 loading_history_ 各自独立）
+  QVector<QVector<im::MessageInfo>> sync_pages_;   // 补拉暂存：[0] 为最新页，页内升序
 };
 
 }  // namespace im

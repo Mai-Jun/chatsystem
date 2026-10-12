@@ -372,6 +372,11 @@ void MainWindow::connect_push() {
           [this](bool ok, const QString& errmsg) {
             status_->setText(ok ? QStringLiteral("推送: 已连接")
                                 : QStringLiteral("推送: %1").arg(errmsg));
+            // 断线重连后补漏：已打开的聊天窗各补拉一次最新消息
+            // （sync_latest 幂等防重入；首次连接时通常无窗口，天然无副作用）
+            if (ok) {
+              for (auto* w : chat_windows_) w->sync_latest();
+            }
           });
   connect(client_, &GatewayClient::pushReceived, this, &MainWindow::on_push);
   client_->connect_push();
@@ -409,8 +414,15 @@ QString MainWindow::display_name_for(const im::ChatSessionInfo& s) {
     return name;
   }
   // 单聊：会话名为空，取对方昵称 + 头像（GetSessionMember）
+  refresh_session_member(sid);
+  return sid;  // 解析完成前先以 session_id 展示
+}
+
+// 单聊会话：异步拉取对方昵称/头像并刷新列表项（打开会话时也会调用，
+// 对方换头像/改昵称后本端打开即刷新）
+void MainWindow::refresh_session_member(const QString& sid) {
   GetSessionMemberReq req;
-  req.set_chat_session_id(s.chat_session_id());
+  req.set_chat_session_id(sid.toStdString());
   client_->call_p<GetSessionMemberResp>(
       REQ_TYPE_GET_SESSION_MEMBER, req,
       [this, sid](bool ok, const QString&, const GetSessionMemberResp& resp) {
@@ -429,7 +441,6 @@ QString MainWindow::display_name_for(const im::ChatSessionInfo& s) {
           break;
         }
       });
-  return sid;  // 解析完成前先以 session_id 展示
 }
 
 void MainWindow::refresh_sessions() {
@@ -559,10 +570,16 @@ ChatWindow* MainWindow::chat_window_for(const QString& session_id, const QString
 void MainWindow::open_session(QListWidgetItem* item) {
   const QString sid = item->data(Qt::UserRole).toString();
   if (sid.isEmpty()) return;
+  const bool existed = chat_windows_.contains(sid);
   ChatWindow* w = chat_window_for(sid, session_names_.value(sid, item->text()));
   w->show();
   w->raise();
   w->activateWindow();
+  if (existed) w->sync_latest();  // 重开旧窗口：补拉断连/关闭期间漏掉的消息
+  // 单聊：打开即刷新对方昵称/头像（群聊名称静态，跳过；sessions_ 查不到也跳过）
+  if (sessions_.contains(sid) && sessions_.value(sid).type() != SESSION_TYPE_GROUP) {
+    refresh_session_member(sid);
+  }
   on_session_seen(sid);  // 打开即已读
 }
 

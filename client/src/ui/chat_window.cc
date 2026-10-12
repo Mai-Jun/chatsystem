@@ -36,12 +36,23 @@ namespace im {
 namespace {
 
 constexpr int kPageSize = 50;
+constexpr int kSyncMaxPages = 20;    // sync_latest 迭代补拉上限，防极端情况拉穿
 constexpr int kMinVoiceMs = 500;     // 短于该时长视为误触，不上传
 constexpr int kMaxVoiceMs = 60000;   // 上限 60s，到点自动停止
 constexpr int kImageMax = 220;       // 图片气泡最长边
 constexpr int kTextMaxWidth = 320;   // 文本气泡换行宽度
 constexpr int kBubblePadX = 24;      // 气泡左右内边距（与 QSS 一致的估算值）
 constexpr int kBubblePadY = 16;
+constexpr int64_t kTimeGapSecs = 300;  // 与上一条相隔超过该时长才显示时间戳（微信式去噪）
+
+// 行数据角色：create_time / message_id / 是否显示时间戳（行重建与去噪判断用）
+const int kRowTimeRole = Qt::UserRole + 10;
+const int kRowMidRole = Qt::UserRole + 11;
+const int kRowTimeShownRole = Qt::UserRole + 12;
+
+int64_t row_create_time(const QListWidgetItem* item) {
+  return item == nullptr ? 0 : item->data(kRowTimeRole).toLongLong();
+}
 
 QString format_time(int64_t seconds) {
   return QDateTime::fromSecsSinceEpoch(seconds).toString(QStringLiteral("MM-dd hh:mm"));
@@ -246,6 +257,84 @@ void ChatWindow::load_history(int64_t cursor) {
       });
 }
 
+// 重开聊天窗/WS 重连后补拉最新消息：从最新一页向前迭代翻页，遇到与本地
+// 重叠（或页不满/到上限）即停；把漏掉的消息按时间顺序追加到列表末尾。
+// 失败静默（仅更新状态栏）；防重入用独立 flag，不与 load_history 互相阻塞。
+void ChatWindow::sync_latest() {
+  if (syncing_latest_) return;
+  syncing_latest_ = true;
+  sync_pages_.clear();
+  sync_latest_page(0, 1);  // 首轮取最新一页
+}
+
+// 迭代补拉第 round 页（cursor 语义与 load_history 一致：0 = 最新页）
+void ChatWindow::sync_latest_page(int64_t cursor, int round) {
+  GetHistoryReq req;
+  req.set_chat_session_id(session_id_.toStdString());
+  req.set_cursor_timestamp(cursor);
+  req.set_limit(kPageSize);
+  client_->call_p<GetHistoryResp>(
+      REQ_TYPE_GET_HISTORY, req,
+      [this, round](bool ok, const QString& err, const GetHistoryResp& resp) {
+        if (!ok) {
+          syncing_latest_ = false;
+          sync_pages_.clear();
+          set_status(QStringLiteral("补拉最新消息失败: %1").arg(err));
+          return;
+        }
+        const int n = resp.messages_size();
+        QVector<im::MessageInfo> unseen;
+        for (const auto& m : resp.messages()) {
+          if (!rows_.contains(QString::fromStdString(m.message_id()))) unseen.append(m);
+        }
+        if (!unseen.isEmpty()) sync_pages_.append(unseen);
+
+        // 「重叠」以本页最旧一条（升序页首）为准：它在 rows_ 里说明本页下沿已触到
+        // 本地已知历史，空档到此为止。页内较新部分可能本就是推送来的已知消息，
+        // 不能见一条已知就停，否则空档大于一页时会漏补。
+        const bool oldest_seen =
+            n > 0 && rows_.contains(QString::fromStdString(resp.messages(0).message_id()));
+        // 停止条件：整页均已存在 / 页不满 50（已到历史开头）/ 触到已知历史 / 累计 20 页
+        if (unseen.isEmpty() || n < kPageSize || oldest_seen || round >= kSyncMaxPages) {
+          finish_sync_latest();
+          return;
+        }
+        // 页满、本页最旧一条未见过：空档可能更大，继续向更旧翻页。
+        // 服务端升序返回，messages(0) 才是本页最旧；游标 = 本页最旧时间戳 + 1，
+        // 与 load_history 一致（开区间查询 + message_id 去重，同秒边界不漏）
+        sync_latest_page(resp.messages(0).create_time() + 1, round + 1);
+      });
+}
+
+// 统一插入：多页暂存按「页从旧到新、页内升序」插入，避免新旧颠倒。
+// sync_pages_[0] 是最新页，倒序迭代即从最旧页开始插。插入位置从列表尾部回扫：
+// 补拉期间实时推送可能已落到末尾（重连后推送先恢复、翻页查询后到），补拉的历史
+// 必须插在这些更新的消息之前；正常无并发时 idx 就是表尾，行为与追加相同。
+void ChatWindow::finish_sync_latest() {
+  syncing_latest_ = false;
+  auto* bar = view_->verticalScrollBar();
+  const bool at_bottom = bar->value() >= bar->maximum() - 8;
+  int added = 0;
+  for (int p = sync_pages_.size() - 1; p >= 0; --p) {
+    for (const auto& m : sync_pages_[p]) {
+      // 收集到插入之间可能有并发（如 load_history 补进同批消息），插入前再查一次
+      if (rows_.contains(QString::fromStdString(m.message_id()))) continue;
+      int idx = messages_.size();
+      while (idx > 0 && messages_[idx - 1].create_time() > m.create_time()) --idx;
+      messages_.insert(idx, m);
+      insert_row(m, idx);
+      ++added;
+    }
+  }
+  sync_pages_.clear();
+  if (added == 0) return;
+  if (!messages_.isEmpty()) oldest_ts_ = messages_.first().create_time();
+  set_status(QStringLiteral("%1 条消息").arg(messages_.size()));
+  if (at_bottom) {  // 原本停在底部才跟到底，避免打断向上翻历史的用户
+    QTimer::singleShot(0, view_, [this]() { view_->scrollToBottom(); });
+  }
+}
+
 const im::MessageInfo* ChatWindow::find_message(const QString& message_id) const {
   for (const auto& m : messages_) {
     if (QString::fromStdString(m.message_id()) == message_id) return &m;
@@ -277,17 +366,19 @@ QString ChatWindow::sender_display_name(const im::MessageInfo& msg) const {
 
 QPixmap make_chat_avatar(const QString& name) { return avatar_pixmap(name, 36); }
 
-QWidget* ChatWindow::build_row(const im::MessageInfo& msg) {
+QWidget* ChatWindow::build_row(const im::MessageInfo& msg, bool show_time) {
   const bool mine = QString::fromStdString(msg.sender_id()) == my_id_;
   auto* w = new QWidget(this);
   auto* v = new QVBoxLayout(w);
-  v->setContentsMargins(12, 5, 12, 5);
+  v->setContentsMargins(12, show_time ? 5 : 2, 12, 5);
   v->setSpacing(3);
 
-  auto* time_lbl = new QLabel(format_time(msg.create_time()), w);
-  time_lbl->setObjectName(QStringLiteral("msgTime"));
-  time_lbl->setAlignment(Qt::AlignCenter);
-  v->addWidget(time_lbl);
+  if (show_time) {  // 微信式：仅与上一条相隔 >5 分钟才显示时间戳
+    auto* time_lbl = new QLabel(format_time(msg.create_time()), w);
+    time_lbl->setObjectName(QStringLiteral("msgTime"));
+    time_lbl->setAlignment(Qt::AlignCenter);
+    v->addWidget(time_lbl);
+  }
 
   auto* line = new QHBoxLayout();
   line->setSpacing(8);
@@ -421,16 +512,41 @@ QWidget* ChatWindow::build_bubble(const im::MessageInfo& msg, bool mine) {
 void ChatWindow::insert_row(const im::MessageInfo& msg, int index) {
   const QString mid = QString::fromStdString(msg.message_id());
   auto* item = new QListWidgetItem;
-  QWidget* w = build_row(msg);
+  item->setData(kRowMidRole, mid);
+  item->setData(kRowTimeRole, static_cast<qlonglong>(msg.create_time()));
+  // 时间戳可见性：与上一行（更旧的一条）间隔 >5 分钟（或本行是第一条）才显示
+  bool show_time = true;
+  if (index > 0) {
+    if (QListWidgetItem* prev_item = view_->item(index - 1)) {
+      const int64_t prev = prev_item->data(kRowTimeRole).toLongLong();
+      show_time = (msg.create_time() - prev) > kTimeGapSecs;
+    }
+  }
+  item->setData(kRowTimeShownRole, show_time);
+  QWidget* w = build_row(msg, show_time);
   item->setSizeHint(w->sizeHint());
   view_->insertItem(index, item);
   view_->setItemWidget(item, w);
   rows_[mid] = item;
+  refresh_row_time(index + 1);  // 紧随其后的旧行，前驱变了，时间戳可能需重算
   if (!msg.file_id().empty()) {
     file_names_[QString::fromStdString(msg.file_id())] = QString::fromStdString(msg.file_name());
   }
   if (msg.type() == MESSAGE_TYPE_IMAGE && !msg.file_id().empty()) {
     ensure_image(QString::fromStdString(msg.file_id()));
+  }
+}
+
+// 重算某行的时间戳可见性（前驱消息变化后调用）；结果变化才重建行控件
+void ChatWindow::refresh_row_time(int index) {
+  if (index <= 0 || index >= view_->count()) return;
+  QListWidgetItem* item = view_->item(index);
+  if (item == nullptr) return;
+  const int64_t cur = item->data(kRowTimeRole).toLongLong();
+  const int64_t prev = view_->item(index - 1)->data(kRowTimeRole).toLongLong();
+  const bool want = (cur - prev) > kTimeGapSecs;
+  if (item->data(kRowTimeShownRole).toBool() != want) {
+    rebuild_row(item->data(kRowMidRole).toString());
   }
 }
 
@@ -440,10 +556,18 @@ void ChatWindow::rebuild_row(const QString& message_id) {
   QListWidgetItem* item = it.value();
   const im::MessageInfo* msg = find_message(message_id);
   if (msg == nullptr) return;
+  // 重建时按当前位置重算时间戳可见性（行可能因翻页增加了前驱）
+  const int idx = view_->row(item);
+  bool show_time = true;
+  if (idx > 0) {
+    const int64_t prev = view_->item(idx - 1)->data(kRowTimeRole).toLongLong();
+    show_time = (msg->create_time() - prev) > kTimeGapSecs;
+  }
+  item->setData(kRowTimeShownRole, show_time);
   // 原本停在底部的话，行高变化后继续贴底（图片加载完成等场景）
   auto* bar = view_->verticalScrollBar();
   const bool at_bottom = bar->value() >= bar->maximum() - 8;
-  QWidget* w = build_row(*msg);
+  QWidget* w = build_row(*msg, show_time);
   view_->removeItemWidget(item);
   view_->setItemWidget(item, w);
   item->setSizeHint(w->sizeHint());

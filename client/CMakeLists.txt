@@ -80,3 +80,7 @@ target_link_libraries(client_smoke PRIVATE im_client_protocol Qt6::Core)
 # ---- 双客户端实时推送测试（M7 遗留项：A/B 互发 + WS 推送 + 离线补历史）----
 add_executable(dual_client_push test/dual_client_push.cc)
 target_link_libraries(dual_client_push PRIVATE im_client_protocol Qt6::Core)
+
+# ---- 本地 Mock 网关（离线 UI 开发/自检：预置数据跑全界面，不依赖后端）----
+add_executable(mock_gateway test/mock_gateway.cc)
+target_link_libraries(mock_gateway PRIVATE im_client_protocol Qt6::Core Qt6::Gui Qt6::WebSockets)
