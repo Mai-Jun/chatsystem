@@ -57,21 +57,31 @@
    复核发现，已改成从尾部回扫定位插入点，重编译 + GUI 冒烟通过。
 3. **[环境级] 工作区路径漂移**（C:→D:，且 cmake 缓存指向旧路径）——WS4 清掉构建目录重配解决；
    文档已更新（D2）。
-4. **[运维级] 服务器资源抖动失联**——见 deviation-log D1；已固化教训（重型操作串行）。
+4. **[运维级] 服务器资源抖动失联**——见 deviation-log D1/D5/D7；三次事故后纪律升级为
+   「编译前一律停 ES」。
 5. **[小项] `im_system.sql` 与迁移脚本需并存**（全新部署走建表语句，存量库走 ALTER）——已用
    `CREATE TABLE IF NOT EXISTS` + 独立迁移满足。
+6. **[代码级·重大] 网关 MQ 桥接"启动失败即永久放弃"**（容器编排下网关先于 RabbitMQ 就绪 →
+   实时推送链路整体失效；HTTP 全部正常只有推送坏）——改为 start 失败仍启动消费线程持续重试；
+   顺手修「空闲超时被计为连接失败」的 3 秒重连噪音。容器形态 dual_client_push 41/41 复验通过。
+7. **[代码级·重大] ES 查询 JSON 多余 `]`**（潜伏自 M6，从未执行过——ES 此前从未部署、搜索一直走
+   LIKE 降级）——ES 上机后搜索全新 400 暴露；已修（详见 deviation-log D6）。
+8. **[界面级] 聊天窗每条消息带时间戳**（视觉噪音）——优化为微信式「间隔 >5 分钟才显示」，
+   Mock 全界面走查 + 截图对比验证（`docs/ui_shots/08→09` 对比）。
+9. **[工具级] 本地离线开发能力**：新增 Mock 网关（`client/test/mock_gateway.cc`）——
+   预置数据跑全界面 + WS 推送演示 + 文件动态生成；protocol_smoke 8/8 对 Mock 通过
+   （修复 keep-alive 连接复用、身份语义两处保真度问题后）。
 
 ## 六、待收尾验收项（服务器恢复后执行，按序串行）
 
-1. WS1 收尾：重建 message_storage_server（-j1 + MemoryMax）→ 重启 → 3 次 dual_client_push 全过
-   → client_smoke + e2e 回归。
-2. WS3：ES 镜像确认/构建 → `docker compose ... up elasticsearch` → 健康 → `bash sql/init_es.sh`
-   → 发消息验证 ES 检索 → 停 ES 验证降级 → 内存观察记录。
-3. WS2：`bash scripts/prepare_runtime_image.sh` → `bash scripts/switch_to_prod.sh` → 容器内服务全起
-   → 回归（ctest/gateway_sim_client/e2e_friend_msg/双客户端）→ 掉线自愈（docker kill 两个服务）
-   → 公网 Windows 客户端验证。
-4. 文档终稿：HANDOFF 现状行、PLAN 里程碑状态、env.md 本轮要点、checklist 执行记录填写。
-5. 提交与三端同步：本地 commit → 服务器 fetch → （服务器侧）push GitHub。
+1. ~~WS1 收尾~~ ✅ 已完成（dual_client_push×3 全过 + smoke + e2e）；
+2. ~~WS2 容器化~~ ✅ 已完成（11 容器全 Up、全量回归 4/4、自愈实测通过）；
+3. ES 搜索主路径复验（D6 修复后的 message_storage_server 重建，**先停 ES 再编译**）：
+   `ok(es)` 命中 + 停 ES 降级 + 起回恢复；
+4. 公网 Windows 客户端双端验证（M10 验收标准终项）；
+5. 文档终稿：HANDOFF 现状行、PLAN 里程碑状态、checklist 执行记录；
+6. 提交与三端同步：本地 commit（已完成 4 个）→ 服务器 fetch → 服务器侧 push GitHub
+   （本机直连不通，走服务器代推——2026-10-13 01:49 实测仍不通）。
 
 ## 七、风险与残余问题
 
