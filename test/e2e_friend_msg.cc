@@ -6,9 +6,11 @@
 // M8 语音步骤要求 speech_server 在线（未配置百度密钥时走开发模式占位转写）
 #include <httplib.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <thread>
 
 #include "file.pb.h"
 #include "friend.pb.h"
@@ -241,16 +243,25 @@ int main() {
                  hist_resp.messages(0).content() == "hello e2e 你好";
   CHECK(hist_ok, "历史消息含刚发的消息");
 
-  // ---- M6: 关键字搜索（ES 不可用 → LIKE 降级）----
+  // ---- M6: 关键字搜索（ES 优先；ES 不可用自动降级 LIKE）----
+  // 注：ES 为异步双写（最终一致），刚发的消息可能尚未进索引——按真实语义重试几次；
+  // 引擎标识在响应 errmsg（ok(es) / ok(like-fallback)），打印出来便于验收确认走哪条路径。
   SearchHistoryReq sh_req;
   sh_req.set_user_id(uid_a);
   sh_req.set_chat_session_id(session_id);
   sh_req.set_keyword("hello e2e");
-  auto r_sh = send(make_req(REQ_TYPE_SEARCH_HISTORY, token_a, sh_req));
-  SearchHistoryResp sh_resp;
-  bool search_ok = r_sh.success() && sh_resp.ParseFromString(r_sh.body()) &&
-                   sh_resp.messages_size() >= 1;
-  CHECK(search_ok, "关键字搜索（降级 LIKE）");
+  bool search_ok = false;
+  std::string engine = "n/a";
+  for (int attempt = 0; attempt < 6 && !search_ok; ++attempt) {
+    auto r_sh = send(make_req(REQ_TYPE_SEARCH_HISTORY, token_a, sh_req));
+    SearchHistoryResp sh_resp;
+    search_ok = r_sh.success() && sh_resp.ParseFromString(r_sh.body()) &&
+                sh_resp.messages_size() >= 1;
+    engine = r_sh.errmsg();
+    if (!search_ok) std::this_thread::sleep_for(std::chrono::milliseconds(800));
+  }
+  printf("      搜索引擎标识: %s（%s）\n", engine.c_str(), search_ok ? "命中" : "未命中");
+  CHECK(search_ok, "关键字搜索（ES 优先/降级 LIKE）");
 
   // ---- M5: 群聊（A 建群拉 B）----
   CreateGroupSessionReq group_req;

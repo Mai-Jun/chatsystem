@@ -17,6 +17,9 @@
 #   - speech_server 如需百度 ASR 正式识别，另建 conf/speech_server.local.flags 并
 #     在该服务 command 追加第三个 --flagfile（gflags 对不存在的 flagfile 会报错，
 #     故不默认追加）。
+#   - mem_limit 为防御性上限（2核1.6G 实测）：重启后 12 容器同时自启有内存竞争，
+#     限额让单容器超用被 Docker 单独重启而不是拖垮整机（真机实测：M10 重启竞争曾
+#     致 sshd 假死，见 docs/deviation-log D7）。
 # ============================================================
 name: im-system-prod
 
@@ -32,6 +35,7 @@ services:
     image: mysql:8.0
     container_name: im-mysql
     restart: unless-stopped
+    mem_limit: 512m
     logging: *default-logging
     environment:
       MYSQL_ROOT_PASSWORD: im123456
@@ -57,6 +61,7 @@ services:
     image: redis:7.2
     container_name: im-redis
     restart: unless-stopped
+    mem_limit: 128m
     logging: *default-logging
     ports:
       - "6379:6379"
@@ -70,6 +75,7 @@ services:
     image: quay.io/coreos/etcd:v3.5.16
     container_name: im-etcd
     restart: unless-stopped
+    mem_limit: 128m
     logging: *default-logging
     command:
       - etcd
@@ -82,6 +88,7 @@ services:
     image: rabbitmq:3.12-management
     container_name: im-rabbitmq
     restart: unless-stopped
+    mem_limit: 384m
     logging: *default-logging
     ports:
       - "5672:5672"
@@ -99,6 +106,7 @@ services:
     image: im-es-7.17.23-ik
     container_name: im-es
     restart: unless-stopped
+    mem_limit: 768m
     logging: *default-logging
     environment:
       discovery.type: single-node
@@ -122,6 +130,7 @@ services:
     container_name: im-user-server
     network_mode: host
     restart: unless-stopped
+    mem_limit: 192m
     logging: *default-logging
     working_dir: /app
     volumes:
@@ -140,6 +149,7 @@ services:
     container_name: im-friend-server
     network_mode: host
     restart: unless-stopped
+    mem_limit: 192m
     logging: *default-logging
     working_dir: /app
     volumes:
@@ -156,6 +166,7 @@ services:
     container_name: im-message-storage-server
     network_mode: host
     restart: unless-stopped
+    mem_limit: 192m
     logging: *default-logging
     working_dir: /app
     volumes:
@@ -172,6 +183,7 @@ services:
     container_name: im-message-server
     network_mode: host
     restart: unless-stopped
+    mem_limit: 192m
     logging: *default-logging
     working_dir: /app
     volumes:
@@ -190,6 +202,7 @@ services:
     container_name: im-gateway-server
     network_mode: host
     restart: unless-stopped
+    mem_limit: 192m
     logging: *default-logging
     working_dir: /app
     volumes:
@@ -208,6 +221,7 @@ services:
     container_name: im-file-server
     network_mode: host
     restart: unless-stopped
+    mem_limit: 192m
     logging: *default-logging
     working_dir: /app
     volumes:
@@ -224,6 +238,7 @@ services:
     container_name: im-speech-server
     network_mode: host
     restart: unless-stopped
+    mem_limit: 192m
     logging: *default-logging
     working_dir: /app
     volumes:
