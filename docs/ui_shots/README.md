@@ -1,16 +1,36 @@
-# 客户端界面截图（本地自检留档，2026-10-13）
+# 客户端界面截图（本地自检留档）
 
 > 采集方式：`mock_gateway` 本地 Mock 网关（离线数据）+ `scripts/win_ui_shot.ps1` 截图
 > + `scripts/win_ui_tool.ps1` 模拟点击输入。用途：无服务器环境下验证界面/交互并纵向对比改动。
+> 最新轮次：2026-10-13 微信风格 UI 优化（侧边栏 + 列表面板 + 会话预览 + 红色角标）。
+
+## 微信风格轮（2026-10-13，当前）
 
 | 截图 | 内容 | 说明 |
 |---|---|---|
-| `04_login_mock_ok.png` | 登录页（账号密码标签） | 服务器地址本地化 + 手机号预填（QSettings 读取验证） |
-| `07_main_v2.png` | 主窗口会话列表 | 「晓彤」单聊（对方昵称+头像正确解析）+「开发小组」群聊 + 待处理角标(1) + 推送已连接 |
-| `08_chat.png` | 聊天窗（优化前） | **每条消息都带时间戳**——视觉噪音大（优化动机） |
-| `09_chat_timeslim.png` | 聊天窗（优化后） | **间隔 5 分钟内不再逐条显示时间戳**（微信式），四类消息气泡完整 |
-| `10_chat_sent.png` | 发送消息 | 回车发送上屏、间隔超 5 分钟的消息正确显示时间戳（`00:53`） |
-| `11_group.png` | 群聊 | 发送者昵称显示（阿杰/晓彤）、多人分头头像 |
-| `12_friends.png` | 好友列表 | 头像异步下载显示 |
-| `13_pending.png` | 待处理事件 | 好友申请条目（双击同意/按 D 拒绝） |
-| `15_unread2.png` | 未读角标 | WS 推送到达且窗口未聚焦 → 「晓彤 (1)」 |
+| `32_final_main.png` | 主窗（微信式） | 深色侧边栏（头像/聊天/通讯录+红点/退出）+ 搜索框 "+" 菜单 + 会话行（头像/昵称/预览/时间/红色角标）|
+| `22_unread_badge.png` | 未读角标 | WS 推送到达且未聚焦 → 红色「1」+ 预览即时更新 + 会话置顶 |
+| `25_contacts2.png` | 通讯录页 | 「新的朋友(1)」入口 + 红点 + 好友行（头像/昵称/签名两行）|
+| `26_search_filter.png` | 搜索过滤 | 输入「阿杰」→ 列表即时过滤 |
+| `28_chat_open.png` | 聊天窗 | 圆角方头像（微信式）、时间戳仅间隔 >5 分钟显示 |
+| `29_chat_sent.png` | 发送消息 | 回车发送上屏（绿气泡）|
+| `30_main_synced.png` | 预览同步 | 发出消息后主窗预览/时间/排序即时同步 |
+| `31_unread_final.png` | 未读+排序复验 | 推送后会话置顶 + 角标 + 预览「刚到家，明天见～」|
+| `33_login_final.png` | 登录页 | 退出登录后回到登录页（手机号预填、服务器地址本地化）|
+
+## 历史轮（2026-10-12：时间戳去噪优化，对比用）
+
+| 截图 | 内容 | 说明 |
+|---|---|---|
+| `04_login_mock_ok.png` | 登录页（旧主题） | QSettings 读取验证 |
+| `08_chat.png` → `09_chat_timeslim.png` | 聊天窗优化前→后 | **每行时间戳 → 间隔 5 分钟才显示**（本次优化的动机对比）|
+
+## 采集方法备忘
+
+- 截图：`powershell -File scripts/win_ui_shot.ps1 -Out <png> -Title <regex>`（窗口置顶 + 定点拷贝）
+- 交互：`powershell -File scripts/win_ui_tool.ps1 -Title <regex> -Actions "click:x:y;dblclick:x:y;type:文本;key:{ENTER};wait:ms"`
+- 窗口枚举（含不可见）：`powershell -File scripts/win_enum.ps1`
+- **坑**：脚本内 Do-DblClick 两次按下间隔必须 <500ms（Windows 双击阈值），此前两次 click
+  间隔 ~450ms 在边界上导致双击时灵时不灵（已修，见 win_ui_tool.ps1 注释）
+- **坑**：QSettings 在 Windows 走注册表，键 `server/host` 实际是子键 `server` 下的值 `host`
+  （不能写成字面值名 `server\host`）

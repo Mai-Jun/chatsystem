@@ -38,7 +38,7 @@ void open_main_window(GatewayClient* client, const im::UserInfo& user) {
   w->setAttribute(Qt::WA_DeleteOnClose);
   QObject::connect(w, &MainWindow::logoutRequested, w,
                    [client]() { show_login_window(client); });
-  w->showMaximized();
+  w->show();  // 微信式窄面板（固定宽度，聊天为独立窗口）
 }
 
 }  // namespace

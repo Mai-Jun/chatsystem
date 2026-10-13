@@ -56,6 +56,8 @@ const char* kGroupSid = "sess-group-01";
 
 int64_t now_s() { return QDateTime::currentSecsSinceEpoch(); }
 
+// 用户 id 固定为 kMyId（单人演示场景）：mock 无持久化，若按手机号动态生成，
+// 客户端已登录后再重启 mock 会导致"自己"的 uid 变化、成员列表去重/会话名解析错乱。
 // ---------------- 预置数据 ----------------
 UserInfo make_user(const char* id, const char* name, const char* avatar = "") {
   UserInfo u;
@@ -63,6 +65,15 @@ UserInfo make_user(const char* id, const char* name, const char* avatar = "") {
   u.set_nickname(name);
   u.set_avatar_file_id(avatar);
   u.set_phone("19353589846");
+  return u;
+}
+
+// 好友带上个性签名/昵称（通讯录页两行展示用）
+UserInfo make_friend(const char* id, const char* name, const char* phone, const char* avatar,
+                     const char* desc) {
+  UserInfo u = make_user(id, name, avatar);
+  u.set_phone(phone);
+  u.set_description(desc);
   return u;
 }
 
@@ -253,25 +264,21 @@ class MockState {
         break;
       }
       case REQ_TYPE_REGISTER: {
-        // 与真实服务端一致：注册返回属于该手机号的 uid，后续 GET_USER_INFO/登录
-        // 都回同一 uid（冒烟测试会断言这条链路）
-        UserRegisterReq r;
-        (void)r.ParseFromString(req.body());
-        SelfUid() = "u-" + r.phone();
+        // 与真实服务端一致：注册返回 uid，后续 GET_USER_INFO/登录都回同一 uid
+        // （冒烟测试会断言这条链路）；mock 恒用 kMyId
         UserRegisterResp out;
         out.set_success(true);
-        out.set_user_id(SelfUid());
+        out.set_user_id(kMyId);
         resp.set_body(out.SerializeAsString());
         break;
       }
       case REQ_TYPE_LOGIN: {
         UserLoginReq r;
         (void)r.ParseFromString(req.body());
-        if (SelfUid().empty()) SelfUid() = "u-" + r.phone();
         UserLoginResp out;
         out.set_success(true);
         out.set_token("mock-token");
-        UserInfo me = make_user(SelfUid().c_str(), SelfNick(), "");
+        UserInfo me = make_user(kMyId, SelfNick(), "");
         me.set_phone(r.phone());
         *out.mutable_user_info() = me;
         resp.set_body(out.SerializeAsString());
@@ -286,8 +293,7 @@ class MockState {
       case REQ_TYPE_GET_USER_INFO: {
         GetUserInfoResp out;
         out.set_success(true);
-        *out.mutable_user_info() =
-            make_user(SelfUid().empty() ? kMyId : SelfUid().c_str(), SelfNick(), "");
+        *out.mutable_user_info() = make_user(kMyId, SelfNick(), "");
         resp.set_body(out.SerializeAsString());
         break;
       }
@@ -308,8 +314,10 @@ class MockState {
       case REQ_TYPE_GET_FRIEND_LIST: {
         GetFriendListResp r;
         r.set_success(true);
-        *r.add_friend_list() = make_user(kPeerId, kPeerName, "avatar-peer-01");
-        *r.add_friend_list() = make_user(kOtherId, kOtherName, "avatar-other-01");
+        *r.add_friend_list() = make_friend(kPeerId, kPeerName, "18353589846", "avatar-peer-01",
+                                           "摄影爱好者，周末常去爬山");
+        *r.add_friend_list() = make_friend(kOtherId, kOtherName, "18553589846", "avatar-other-01",
+                                           "后端工程师，加班中");
         resp.set_body(r.SerializeAsString());
         break;
       }
@@ -332,7 +340,7 @@ class MockState {
         GetSessionMemberResp out;
         out.set_success(true);
         auto* m1 = out.add_members();
-        m1->set_user_id(SelfUid().empty() ? kMyId : SelfUid());
+        m1->set_user_id(kMyId);
         m1->set_nickname(kMyName);
         if (r.chat_session_id() == kSingleSid) {
           auto* m2 = out.add_members();
@@ -369,7 +377,7 @@ class MockState {
         out.set_success(true);
         for (const auto& m : page) {
           MessageInfo mm = m;
-          if (mm.sender_id() == kMyId) mm.set_sender_id(SelfUid().empty() ? kMyId : SelfUid());
+          
           *out.add_messages() = mm;
         }
         resp.set_body(out.SerializeAsString());
@@ -395,7 +403,7 @@ class MockState {
         MessageInfo m;
         m.set_message_id(QString("mock-msg-%1").arg(next_id_++).toStdString());
         m.set_chat_session_id(r.chat_session_id());
-        m.set_sender_id(SelfUid().empty() ? kMyId : SelfUid());  // 真实网关按 token 注入
+        m.set_sender_id(kMyId);  // 真实网关按 token 注入
         m.set_type(r.content().type());
         m.set_content(r.content().content());
         m.set_file_id(r.content().file_id());
@@ -482,14 +490,10 @@ class MockState {
   std::map<std::string, std::vector<MessageInfo>> hist_;
 
  private:
-  // 本"登录会话"的动态身份（注册/首次登录时按手机号生成，冒烟断言要求
-  // GET_USER_INFO.user_id == 注册返回的 uid）
-  std::string& SelfUid() { return self_uid_; }
   const char* SelfNick() const { return kMyName; }
 
   std::map<std::string, std::pair<QString, QByteArray>> files_;
   std::vector<MessageInfo> pending_push_;
-  std::string self_uid_;
   int next_id_ = 1;
 };
 

@@ -80,6 +80,44 @@ QFrame#bubblePeer { background: #FFFFFF; border-radius: 6px; }
 /* ---------- 卡片 ---------- */
 QFrame#card { background: #FFFFFF; border-radius: 8px; border: 1px solid #E7E7E7; }
 QWidget#inputPanel { background: #FFFFFF; }
+
+/* ---------- 主窗（微信风格：深色侧边栏 + 白色列表面板） ---------- */
+QWidget#sideBar { background: #2E2E2E; }
+QPushButton#sideNav {
+  background: transparent; border: none; border-radius: 4px;
+  color: #9B9B9B; font-size: 11px; padding: 0px;
+}
+QPushButton#sideNav:hover { background: #3D3D3D; }
+QPushButton#sideNav:checked { color: #07C160; }
+QWidget#listPanel { background: #FFFFFF; }
+QLineEdit#searchBox {
+  background: #F5F5F5; border: none; border-radius: 6px; padding: 6px 10px;
+}
+QLineEdit#searchBox:focus { background: #EFEFEF; }
+QPushButton#plusBtn {
+  background: transparent; border: none; border-radius: 4px;
+  color: #7A7A7A; font-size: 17px; padding: 0px;
+}
+QPushButton#plusBtn:hover { background: #EFEFEF; }
+QPushButton#contactEntry {
+  background: transparent; border: none; text-align: left;
+  padding: 11px 10px; color: #191919;
+}
+QPushButton#contactEntry:hover { background: #F2F2F2; }
+
+/* ---------- 会话/好友行（自绘行控件内的子标签） ---------- */
+QLabel#nameLabel { font-size: 14px; color: #191919; }
+QLabel#preview { color: #9A9A9A; font-size: 12px; }
+QLabel#timeLabel { color: #B2B2B2; font-size: 11px; }
+QLabel#badge {
+  background: #FA5151; color: #FFFFFF; border-radius: 9px;
+  font-size: 11px; padding: 0px 5px;
+}
+QLabel#redDot { background: #FA5151; border-radius: 4px; }
+QListWidget#listView { background: #FFFFFF; }
+QListWidget#listView::item { border-bottom: 1px solid #F2F2F2; padding: 0px; }
+QListWidget#listView::item:hover { background: #F2F2F2; }
+QListWidget#listView::item:selected { background: #E4E4E4; }
 )";
 
 }  // namespace im

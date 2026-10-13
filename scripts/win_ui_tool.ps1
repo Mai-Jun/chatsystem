@@ -80,9 +80,17 @@ function Do-Click([int]$wx, [int]$wy) {
   Start-Sleep -Milliseconds 150
 }
 function Do-DblClick([int]$wx, [int]$wy) {
-  Do-Click $wx $wy
-  Start-Sleep -Milliseconds 80
-  Do-Click $wx $wy
+  # Tight interval: Windows double-click threshold is 500ms and Do-Click's
+  # guarded sleeps can push the two downs past it (flaky double-click detection).
+  [U32]::SetCursorPos($r.Left + $wx, $r.Top + $wy) | Out-Null
+  Start-Sleep -Milliseconds 120
+  for ($k = 0; $k -lt 2; $k++) {
+    [U32]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
+    Start-Sleep -Milliseconds 30
+    [U32]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
+    if ($k -eq 0) { Start-Sleep -Milliseconds 60 }
+  }
+  Start-Sleep -Milliseconds 200
 }
 function Do-Type([string]$s) {
   # clipboard paste: reliable for arbitrary text
