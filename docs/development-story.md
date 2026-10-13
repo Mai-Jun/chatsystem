@@ -220,6 +220,7 @@ Qt 客户端 ──HTTP(9000 请求)──┐
 
 | 想复习 | 看哪 |
 |---|---|
+| **开发过程复盘（最推荐先读）** | `docs/retrospective.md` |
 | 完整计划与设计决策 | `docs/PLAN.md` |
 | 现状/操作命令/踩坑速查 | `docs/HANDOFF.md` |
 | 环境版本与所有坑位 | `docs/env.md` |
