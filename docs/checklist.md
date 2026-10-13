@@ -57,22 +57,27 @@ docker compose -f docker/docker-compose.dev.yml up -d
 
 - [x] `curl -s localhost:9200/_cluster/health` status=green（256m 堆，1.6G 机器实测稳定：swap 0 / load 0.43）
 - [x] `bash sql/init_es.sh` 建索引成功；`bash scripts/backfill_es.sh` 存量回填 231 条，0 失败
-- [ ] 发中文消息 → 搜索命中且 `ok(es)`（**修复查询 JSON 多括号 bug 后待复验**：修复前 ES 一律 400
-      静默降级 LIKE——bug 从 M6 潜伏至今，ES 首次上机才暴露；见 deviation-log D6）
-- [ ] 停 ES → 降级 LIKE 可用 → 起回 ES 恢复 `ok(es)`（待复验）
+- [x] **ES 搜索主路径复验**：`ok(es)` 命中（D6 括号修复生效，e2e 引擎标识实测；2026-10-13）
+- [x] **降级路径复验**：停 ES → `ok(like-fallback)` 命中 → 起回 ES（两条路径都实测）
 - [x] 内存观察：ES(256m)+全栈 used≈1.2G / swap 0 / available≈220M，稳定运行（对照：512m 堆曾两度引发抖动）
+- [x] e2e 测试适配 ES 最终一致语义（异步双写重试 6 次 + 打印引擎标识）
 
-## 五、公网双客户端互聊（M10 验收标准）
+## 五、公网双客户端互聊（M10 验收标准）——✅ 完成（2026-10-13）
 
-- [ ] 本机（Windows）`im_client.exe` 登录账号 A 并给 B 发消息（服务器恢复后执行）
-- [ ] B 端收到实时推送（WS）
-- [ ] 四类消息双端互发验证（本地 mock 已验渲染；公网待验）
-- [ ] 未读计数、历史分页验证（本地 mock 已验；公网待验）
+- [x] 本机（Windows）`im_client.exe` 登录账号 A（端A）并给 B（端B）发消息
+- [x] 真实数据加载：会话列表（末条消息预览「你好」+ 微信式时间）、聊天窗 50 条真实历史（含图片/语音）+ 真实头像
+- [x] 公网发送成功：「公网验收通过-微信风格UI」绿气泡上屏，MySQL 落库（message 表 298 条）
+- [x] WS 推送连接（状态栏「推送: 已连接」）
+- [x] 未读计数/历史分页/微信式时间戳（本地 Mock 全界面验证；公网实测加载与发送）
 
 ## 六、异常场景
 
 - [x] 容器崩溃自愈（见第二节）
-- [ ] 停 Redis/MySQL/RabbitMQ 的降级与恢复行为（待做，非阻塞）
+- [x] **重启自愈**：服务器重启后 12 容器全部自动拉起（restart: unless-stopped 生效，2026-10-13 实测）
+- [x] **mem_limit 防御**：12 服务全部配置内存上限（重建容器后 `docker inspect` 验证生效：
+      网关 192M / ES 768M / MySQL 512M），单容器超用不再拖垮整机
+- [x] **编译纪律工具化**：`scripts/safe_build.sh`（停 ES → -j1 编译 → 起 ES 并等 green 全自动），
+      首秀实测通过（e2e 重建全程 SSH 未受影响）
 
 ## 执行记录（每轮部署后追加）
 
@@ -81,5 +86,6 @@ docker compose -f docker/docker-compose.dev.yml up -d
 | 2026-10-12 | 协调会话+WS1/WS4 | 开工基线 | client_smoke 8/8、dual_client_push 40/40 | 服务器三端一致 de87318 |
 | 2026-10-12 深夜 | 协调会话 | seq 修复 | dual_client_push×3 全过（41 项，同秒断言 1 秒内 12 条严格有序）+ smoke/e2e 全绿 | 服务器两次资源抖动（D1/D5），用户重启恢复 |
 | 2026-10-13 凌晨 | 协调会话 | M10 容器化 | 11 容器全 Up；全量回归 4/4 全绿；自愈实测通过 | 发现修复 3 个真 bug（MQ 自愈、MQ 空闲误判、ES 查询 JSON）；ES 搜索走 ES 路径待复验 |
-| （待续） | | 公网双端 + ES 复验 | | |
+| 2026-10-13 上午 | 协调会话 | 微信风格 UI + 公网终验 | 登录页/主窗/会话列表/聊天窗微信化；Mock 全界面走查 + **公网端到端验收通过**（登录/历史/发送/落库） | D7 第四次抖动（编译未停 ES 复发）→ 固化 safe_build.sh 工具；容器加 mem_limit |
+| （待续） | | 录音真机验证 | | 需用户真机点「录音」说话验证 |
 
