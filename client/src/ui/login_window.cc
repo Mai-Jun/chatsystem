@@ -1,12 +1,15 @@
 #include "ui/login_window.hpp"
 
-#include <QFormLayout>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSettings>
-#include <QTabWidget>
+#include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -15,16 +18,48 @@
 
 namespace im {
 
+namespace {
+
+// 微信式品牌 Logo：绿色圆角方块 + 白色聊天气泡
+QPixmap make_logo(int size) {
+  QPixmap pm(size, size);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing);
+  QPainterPath rounded;
+  rounded.addRoundedRect(QRectF(0, 0, size, size), size * 0.24, size * 0.24);
+  p.fillPath(rounded, QColor("#07C160"));
+  p.setPen(Qt::NoPen);
+  p.setBrush(Qt::white);
+  p.drawEllipse(QRectF(size * 0.20, size * 0.22, size * 0.47, size * 0.47));
+  QPainterPath tail;
+  tail.moveTo(size * 0.58, size * 0.62);
+  tail.lineTo(size * 0.77, size * 0.79);
+  tail.lineTo(size * 0.60, size * 0.72);
+  tail.closeSubpath();
+  p.drawPath(tail);
+  p.drawEllipse(QRectF(size * 0.40, size * 0.42, size * 0.15, size * 0.15));
+  return pm;
+}
+
+}  // namespace
+
 LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
     : QDialog(parent), client_(client) {
   setWindowTitle(QStringLiteral("IM 即时通讯 - 登录"));
-  setFixedSize(420, 470);
+  setObjectName(QStringLiteral("loginDialog"));
+  setFixedSize(420, 560);
 
   auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(24, 22, 24, 12);
-  layout->setSpacing(10);
+  layout->setContentsMargins(26, 26, 26, 12);
+  layout->setSpacing(12);
 
-  // 标题
+  // ---- 品牌区：Logo + 标题 + 副标题 ----
+  auto* logo = new QLabel(this);
+  logo->setPixmap(make_logo(64));
+  logo->setFixedSize(64, 64);
+  layout->addWidget(logo, 0, Qt::AlignHCenter);
+
   auto* title = new QLabel(QStringLiteral("IM 即时通讯"), this);
   title->setObjectName(QStringLiteral("title"));
   title->setAlignment(Qt::AlignCenter);
@@ -34,18 +69,28 @@ LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
   layout->addWidget(title);
   layout->addWidget(subtitle);
 
-  tabs_ = new QTabWidget(this);
-  layout->addWidget(tabs_, 1);
-  tabs_->addTab(build_password_tab(), QStringLiteral("账号密码"));
-  tabs_->addTab(build_sms_tab(), QStringLiteral("验证码登录"));
-  tabs_->addTab(build_register_tab(), QStringLiteral("注册"));
+  // ---- 三标签头（等分，绿下划线）+ 页栈 ----
+  layout->addWidget(build_tab_header());
 
-  // 服务器地址（持久化；默认为线上网关，本机调试可改 127.0.0.1）
+  stack_ = new QStackedWidget(this);
+  stack_->addWidget(build_password_tab());
+  stack_->addWidget(build_sms_tab());
+  stack_->addWidget(build_register_tab());
+  layout->addWidget(stack_, 1);
+  set_tab(0);
+
+  // ---- 服务器地址（持久化；默认为线上网关，本机调试可改 127.0.0.1）----
   QSettings settings("im-system", "im-client");
   const QString host =
       settings.value("server/host", QStringLiteral("47.112.192.119")).toString();
   const int port = settings.value("server/port", 9000).toInt();
+  auto* line = new QFrame(this);
+  line->setFrameShape(QFrame::HLine);
+  line->setStyleSheet(QStringLiteral("color:#F0F0F0;"));
+  layout->addWidget(line);
+
   auto* addr_row = new QHBoxLayout();
+  addr_row->setSpacing(4);
   auto* addr_label = new QLabel(QStringLiteral("服务器"), this);
   addr_label->setObjectName(QStringLiteral("hint"));
   auto* addr_edit = new QLineEdit(host, this);
@@ -62,13 +107,46 @@ LoginWindow::LoginWindow(GatewayClient* client, QWidget* parent)
     settings.setValue("server/host", addr_edit->text());
     settings.setValue("server/port", port_edit->text().toInt());
   });
+
+  // 已预填手机号时焦点直接给密码框（省一次点击）
+  if (!pwd_phone_->text().isEmpty()) {
+    pwd_password_->setFocus();
+  } else {
+    pwd_phone_->setFocus();
+  }
+}
+
+// 顶部三标签：等分宽度的扁平按钮，选中态由 QSS :checked 画绿下划线
+QWidget* LoginWindow::build_tab_header() {
+  auto* header = new QWidget(this);
+  auto* h = new QHBoxLayout(header);
+  h->setContentsMargins(0, 0, 0, 0);
+  h->setSpacing(0);
+  const QStringList names = {QStringLiteral("账号密码"), QStringLiteral("验证码登录"),
+                             QStringLiteral("注册")};
+  for (int i = 0; i < names.size(); ++i) {
+    auto* btn = new QPushButton(names[i], header);
+    btn->setObjectName(QStringLiteral("loginTab"));
+    btn->setCheckable(true);
+    btn->setCursor(Qt::PointingHandCursor);
+    connect(btn, &QPushButton::clicked, this, [this, i]() { set_tab(i); });
+    h->addWidget(btn, 1);  // stretch=1：三等分
+    tab_btns_.append(btn);
+  }
+  return header;
+}
+
+void LoginWindow::set_tab(int index) {
+  if (stack_ == nullptr || index < 0 || index >= stack_->count()) return;
+  stack_->setCurrentIndex(index);
+  for (int i = 0; i < tab_btns_.size(); ++i) tab_btns_[i]->setChecked(i == index);
 }
 
 QWidget* LoginWindow::build_password_tab() {
   auto* tab = new QWidget(this);
   auto* v = new QVBoxLayout(tab);
-  v->setContentsMargins(18, 20, 18, 8);
-  v->setSpacing(12);
+  v->setContentsMargins(4, 22, 4, 8);
+  v->setSpacing(14);
 
   pwd_phone_ = new QLineEdit(tab);
   pwd_phone_->setPlaceholderText(QStringLiteral("手机号"));
@@ -86,7 +164,7 @@ QWidget* LoginWindow::build_password_tab() {
   v->addWidget(pwd_btn_);
 
   pwd_status_ = new QLabel(tab);
-  pwd_status_->setObjectName(QStringLiteral("hint"));
+  pwd_status_->setObjectName(QStringLiteral("loginStatus"));
   pwd_status_->setWordWrap(true);
   v->addWidget(pwd_status_);
   v->addStretch(1);
@@ -98,11 +176,13 @@ QWidget* LoginWindow::build_password_tab() {
 QWidget* LoginWindow::build_sms_tab() {
   auto* tab = new QWidget(this);
   auto* v = new QVBoxLayout(tab);
-  v->setContentsMargins(18, 20, 18, 8);
-  v->setSpacing(12);
+  v->setContentsMargins(4, 22, 4, 8);
+  v->setSpacing(14);
 
   sms_phone_ = new QLineEdit(tab);
   sms_phone_->setPlaceholderText(QStringLiteral("手机号"));
+  // 与密码登录共用上次手机号
+  sms_phone_->setText(QSettings("im-system", "im-client").value("account/phone").toString());
   v->addWidget(sms_phone_);
 
   auto* code_row = new QHBoxLayout();
@@ -110,7 +190,7 @@ QWidget* LoginWindow::build_sms_tab() {
   sms_code_ = new QLineEdit(tab);
   sms_code_->setPlaceholderText(QStringLiteral("短信验证码"));
   sms_send_btn_ = new QPushButton(QStringLiteral("获取验证码"), tab);
-  sms_send_btn_->setFixedWidth(110);
+  sms_send_btn_->setFixedWidth(104);
   code_row->addWidget(sms_code_, 1);
   code_row->addWidget(sms_send_btn_);
   v->addLayout(code_row);
@@ -120,7 +200,7 @@ QWidget* LoginWindow::build_sms_tab() {
   v->addWidget(sms_btn_);
 
   sms_status_ = new QLabel(tab);
-  sms_status_->setObjectName(QStringLiteral("hint"));
+  sms_status_->setObjectName(QStringLiteral("loginStatus"));
   sms_status_->setWordWrap(true);
   v->addWidget(sms_status_);
   v->addStretch(1);
@@ -135,15 +215,15 @@ QWidget* LoginWindow::build_sms_tab() {
 QWidget* LoginWindow::build_register_tab() {
   auto* tab = new QWidget(this);
   auto* v = new QVBoxLayout(tab);
-  v->setContentsMargins(18, 20, 18, 8);
-  v->setSpacing(12);
+  v->setContentsMargins(4, 16, 4, 8);
+  v->setSpacing(10);
 
   auto* phone_row = new QHBoxLayout();
   phone_row->setSpacing(8);
   reg_phone_ = new QLineEdit(tab);
   reg_phone_->setPlaceholderText(QStringLiteral("手机号"));
   reg_send_btn_ = new QPushButton(QStringLiteral("获取验证码"), tab);
-  reg_send_btn_->setFixedWidth(110);
+  reg_send_btn_->setFixedWidth(104);
   phone_row->addWidget(reg_phone_, 1);
   phone_row->addWidget(reg_send_btn_);
   v->addLayout(phone_row);
@@ -166,7 +246,7 @@ QWidget* LoginWindow::build_register_tab() {
   v->addWidget(reg_btn_);
 
   reg_status_ = new QLabel(tab);
-  reg_status_->setObjectName(QStringLiteral("hint"));
+  reg_status_->setObjectName(QStringLiteral("loginStatus"));
   reg_status_->setWordWrap(true);
   v->addWidget(reg_status_);
   v->addStretch(1);

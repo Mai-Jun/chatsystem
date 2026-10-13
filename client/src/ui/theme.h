@@ -35,11 +35,25 @@ QPushButton#toolBtn:hover { background: #FFFFFF; border-radius: 4px; }
 
 /* ---------- 输入框 ---------- */
 QLineEdit {
-  background: #FFFFFF; border: 1px solid #D9D9D9; border-radius: 4px; padding: 7px 9px;
+  background: #F7F7F7; border: 1px solid #F7F7F7; border-radius: 6px; padding: 9px 12px;
   selection-background-color: #07C160; selection-color: #FFFFFF;
 }
-QLineEdit:focus { border: 1px solid #07C160; }
+QLineEdit:hover { background: #F2F2F2; border-color: #F2F2F2; }
+QLineEdit:focus { background: #FFFFFF; border: 1px solid #07C160; }
 QLineEdit#addrEdit { border: none; background: transparent; color: #8A8A8A; padding: 2px; }
+QLineEdit#addrEdit:hover, QLineEdit#addrEdit:focus { background: transparent; border: none; }
+
+/* ---------- 登录窗（微信式：白底 + 绿色 Logo + 等分标签头） ---------- */
+QDialog#loginDialog { background: #FFFFFF; }
+QPushButton#loginTab {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  border-radius: 0px; padding: 10px 0px; color: #8A8A8A; font-size: 14px;
+}
+QPushButton#loginTab:hover:!checked { color: #191919; }
+QPushButton#loginTab:checked {
+  color: #07C160; font-weight: 600; border-bottom: 2px solid #07C160;
+}
+QLabel#loginStatus { color: #9A9A9A; font-size: 12px; }
 
 /* ---------- 列表 ---------- */
 QListWidget { background: #FFFFFF; border: none; outline: 0; }
@@ -66,6 +80,7 @@ QLabel#title { font-size: 21px; font-weight: 600; color: #191919; }
 QLabel#subtitle { color: #9A9A9A; font-size: 12px; }
 QLabel#hint { color: #9A9A9A; font-size: 12px; }
 QLabel#formLabel { color: #666666; }
+QLabel#linkLabel { color: #576B95; font-size: 12px; }
 QLabel#msgTime { color: #9A9A9A; font-size: 11px; }
 QLabel#msgSender { color: #9A9A9A; font-size: 11px; }
 QLabel#fileName { font-weight: 600; }

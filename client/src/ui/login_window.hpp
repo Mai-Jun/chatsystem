@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QVector>
 
 #include "base.pb.h"
 #include "gateway.pb.h"
@@ -7,17 +8,17 @@
 class QLineEdit;
 class QPushButton;
 class QLabel;
-class QTabWidget;
+class QStackedWidget;
 
 namespace im {
 
 class GatewayClient;
 
-// 登录/注册窗口（微信风格，M9 第三轮）
-// - 账号密码登录（主入口，第一个标签页）
-// - 验证码登录：手机号 + 短信验证码（开发模式固定码 666666）
-// - 注册：手机号 + 验证码 + 昵称 + 密码，注册成功自动登录
-// - 服务器地址可配置并持久化（QSettings）
+// 登录/注册窗口（微信风格）
+// - 自绘等分标签头（账号密码 / 验证码登录 / 注册）+ QStackedWidget 页
+//   （不用 QTabWidget：其 setExpanding 在带 QSS 环境下不可靠，且下划线样式难精确控制）
+// - 账号密码登录（主入口）；验证码登录走 LOGIN_BY_SMS（开发模式固定码 666666）
+// - 注册成功自动登录；服务器地址可配置并持久化（QSettings）
 class LoginWindow : public QDialog {
   Q_OBJECT
  public:
@@ -27,9 +28,11 @@ class LoginWindow : public QDialog {
   void loginSucceeded(QString token, im::UserInfo user);
 
  private:
+  QWidget* build_tab_header();   // 顶部三标签（等分，绿下划线）
   QWidget* build_password_tab();
   QWidget* build_sms_tab();
   QWidget* build_register_tab();
+  void set_tab(int index);       // 切换页 + 标签选中态
   void do_password_login();
   void do_sms_login();
   void do_register();
@@ -39,7 +42,8 @@ class LoginWindow : public QDialog {
   void set_status(QLabel* label, const QString& text);
 
   GatewayClient* client_;
-  QTabWidget* tabs_ = nullptr;
+  QStackedWidget* stack_ = nullptr;
+  QVector<QPushButton*> tab_btns_;
 
   // 账号密码（主入口）
   QLineEdit* pwd_phone_ = nullptr;
