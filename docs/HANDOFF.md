@@ -167,14 +167,21 @@ cd /root/chatsystem
 docker compose -f docker/docker-compose.prod.yml ps        # 查看 12 服务状态
 docker compose -f docker/docker-compose.prod.yml logs -f gateway_server  # 看日志
 docker compose -f docker/docker-compose.prod.yml restart gateway_server   # 重启单服务
-# 代码更新：服务器上编译后重启对应容器（挂载目录，无需重建镜像）：
-#   systemd-run --scope --quiet -p MemoryMax=1100M nice -n 19 cmake --build build -j1 --target <svc>
-#   docker compose -f docker/docker-compose.prod.yml restart <svc>
-# 【重要纪律】编译前先 docker stop im-es（ES 内存释放），编译完再 docker compose ... up -d elasticsearch
+
+# 【停机（释放资源）】务必用串行脚本，不要 `compose stop`（并行停机会让 ES+MySQL
+# 同时关机刷盘，把这台小机器打进 IO 抖动致 SSH 失联——deviation-log D8）：
+bash scripts/stop_stack.sh          # 逐容器串行停（应用→ES→MQ/Redis/etcd→MySQL）
+# 恢复：docker compose -f docker/docker-compose.prod.yml up -d   （数据在卷中，不丢）
+
+# 代码更新：编译后重启对应容器（挂载目录，无需重建镜像）。
+# 【重要纪律】编译一律走包装脚本（自动 停ES → -j1+内存上限 → 起ES 等 green）：
+bash scripts/safe_build.sh <target>            # 例：bash scripts/safe_build.sh message_storage_server
+docker compose -f docker/docker-compose.prod.yml restart <svc>
 # ES 管理：docker start/stop im-es；搜索走 ES 时日志见 storage 服务的 "ok(es)"
 # 存量消息回填 ES：bash scripts/backfill_es.sh（重建索引后跑一次）
 # 自愈验证：宿主机 kill -9 <容器主进程 PID> → docker inspect 看 RestartCount；
 #   注意 docker stop/kill 属"手动停止"策略故意不重启（Docker 语义），容器内 kill -1 会被 PID 命名空间保护
+# 【总纪律】这台 2核1.6G 机器上「编译 / 镜像操作 / ES 启动 / 批量启停」一律串行，拒绝并行批处理（D1/D5/D7/D8 五副面孔同一根因）
 
 # ============================================================
 # 【备用形态：dev 裸进程 + dev compose（M9 前）】——需要时切回
